@@ -1,5 +1,7 @@
 #include "dclm.h"
 #include <stdio.h>
+
+#if 0
 #include <time.h>
 
 double time_msec(const struct timespec *ts)
@@ -55,4 +57,40 @@ int main(int argc, char **argv)
 
 	return 0;
 }
+#endif
 
+int main(int argc, char **argv)
+{
+	DCLEDMatrix *dclm;
+
+	dclm=dclmOpen("test");
+	if (dclm) {
+		DCLEDMatrixScreen *scr;
+		DCLMImage *img;
+		int i;
+
+		scr=dclmScrCreate(dclm);
+		img=dclmImageCreateFit(dclm);
+		dclmImageClear(img);
+		dclmImageSetPixel(img,0,0,0xff);
+		dclmImageSetPixel(img,1,1,0xff);
+		dclmImageSetPixel(img,2,2,0xff);
+		dclmImageSetPixel(img,3,3,0xff);
+		dclmImageSetPixel(img,4,4,0xff);
+		dclmImageSetPixel(img,5,5,0xff);
+		dclmImageSetPixel(img,6,6,0xff);
+		dclmImageSetPixel(img,20,6,0xff);
+		dclmImageSetPixel(img,20,0,0xff);
+
+		dclmScrFromImg(scr,img);
+		for (i=0; i<1000;i++) {
+			dclmSendScreen(scr);
+		}
+
+		dclmScrDestroy(scr);
+		dclmImageDestroy(img);
+		dclmClose(dclm);
+	}
+
+	return 0;
+}

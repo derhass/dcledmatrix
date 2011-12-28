@@ -215,7 +215,7 @@ dclmOpenUSBDevice(DCLEDMatrix *dclm)
 
 	for (bus=busses; bus; bus=bus->next) {
 		for (dev=bus->devices; dev; dev=dev->next) {
-			printf("0x%x 0x%x 0x%x %s\n",dev->descriptor.idVendor, dev->descriptor.idProduct, dev->descriptor.bDeviceClass, dev->filename);
+			/* printf("0x%x 0x%x 0x%x %s\n",dev->descriptor.idVendor, dev->descriptor.idProduct, dev->descriptor.bDeviceClass, dev->filename); */
 			if (isDCLMDevice(dclm, dev)) {
 				found++;
 
@@ -425,7 +425,6 @@ dclmScrSetPixel(DCLEDMatrixScreen *scr, unsigned int x, unsigned int y, int valu
 		return;
 	}
 
-	/* TODO MH: x alignment */
 	data += (DCLM_DATA_COLS - 2)/2 - 1 - (x>>3);
 
 	bit=(x & 0x07);
@@ -439,6 +438,148 @@ dclmScrSetPixel(DCLEDMatrixScreen *scr, unsigned int x, unsigned int y, int valu
 		/* toggle LED */
 	}
 }
+
+extern DCLMImage *
+dclmImageCreateFit(const DCLEDMatrix *dclm)
+{
+	if (!dclm || dclm->cols < 1 || dclm->rows<1)
+		return NULL;
+
+	return dclmImageCreate(dclm->cols, dclm->rows, NULL);
+}
+
+static void
+scr_set_row(uint8_t *scrdata, const uint8_t *imgdata)
+{
+	int byte=(DCLM_DATA_COLS-2)/2-1;
+	int bit=0;
+	int col;
+	uint8_t mask;
+
+	for (col=0; col < DCLM_COLS; col++) {
+		mask=1<<bit;
+		scrdata[byte]=(~mask & scrdata[byte]) | (mask & ( (~imgdata[col]) >> (7-bit)) );
+		byte-=(++bit)>>3;
+		bit &= 7;
+	}
+}
+
+extern void
+dclmScrFromImg(DCLEDMatrixScreen *scr, const DCLMImage *img)
+{
+	int row;
+	uint8_t *scrdata;
+	const uint8_t *imgdata;
+
+	assert(scr);
+	assert(scr->dclm);
+	assert(img);
+	assert(img->data);
+	assert(img->dims[0] >= (size_t)scr->dclm->cols);
+	assert(img->dims[1] >= (size_t)scr->dclm->rows);
+
+	scrdata=&scr->data[0][2];
+	imgdata=img->data;
+	for (row=0; row < DCLM_ROWS; row++) {
+		scr_set_row(scrdata,imgdata);
+		scrdata+= (DCLM_DATA_COLS-2)/2 + ((row & 1)<<1);
+		imgdata+=img->dims[0];
+	}
+}
+
+static void
+scr_get_row(const uint8_t *scrdata, uint8_t *imgdata)
+{
+	int byte=(DCLM_DATA_COLS-2)/2-1;
+	int bit=0;
+	int col;
+	uint8_t mask;
+
+	for (col=0; col < DCLM_COLS; col++) {
+		mask=1<<bit;
+		imgdata[col]=(scrdata[byte] & mask)?0x00:0xff;
+		byte-=(++bit)>>3;
+		bit &= 7;
+	}
+}
+
+extern void
+dclmScrToiImg(const DCLEDMatrixScreen *scr, DCLMImage *img)
+{
+	int row;
+	const uint8_t *scrdata;
+	uint8_t *imgdata;
+
+	assert(scr);
+	assert(scr->dclm);
+	assert(img);
+	assert(img->data);
+	assert(img->dims[0] >= (size_t)scr->dclm->cols);
+	assert(img->dims[1] >= (size_t)scr->dclm->rows);
+
+	scrdata=&scr->data[0][2];
+	imgdata=img->data;
+	for (row=0; row < DCLM_ROWS; row++) {
+		scr_get_row(scrdata,imgdata);
+		scrdata+= (DCLM_DATA_COLS-2)/2 + ((row & 1)<<1);
+		imgdata+=img->dims[0];
+	}
+}
+
+#if 0
+extern void
+dclmScrFromImg(DCLEDMatrixScreen *scr, const DCLMImage *img,
+	       size_t from_x, size_t from_y, int w, int h,
+	       int to_x, int to_y)
+{
+	DCLEDMatrix *dclm;
+	uint8_t *scrdata;
+	const uint8_t *imgdata;
+	int row;
+
+	assert(scr && scr->dclm && img);
+
+	dclm=scr->dclm;
+
+	/* clip it */
+	if (to_x < 0) {
+		w += to_x;
+		to_x = 0;
+	}
+	if (to_y < 0) {
+		h += to_y;
+		to_y=0;
+	}
+	if ( to_x + w > dclm->cols ) {
+		w=dclm->cols - to_x;
+	}
+	if ( to_y + h > dclm->rows ) {
+		h=dclm->rows - to_y;
+	}
+
+	if (w < 1 || h < 1) {
+		/* completey outside */
+		return;
+	}
+
+	assert(img->dims[0] > 0 && img->dims[1] > 0);
+
+	scrdata=&scr->data[to_y/2][2] + (to_y & 1) * 3;
+	imgdata=DCLM_IMG_PIXEL(img, from_x % img->dims[0], from_y % img->dims[1]);
+	
+	for (row=0; row<h; row++) {
+		int col;
+		for (col=to_x; col <to_x+w; col++) {
+			static const
+		}
+	}
+
+
+
+
+
+}
+#endif
 
 /****************************************************************************
  * MANAGEMENT OF THE DCLEDMatrix struct                                     *
@@ -520,6 +661,22 @@ dclmGetError(const DCLEDMatrix *dclm)
 	}
 	dclmError(NULL, DCLM_NO_CONTEXT, "GetError");
 	return DCLM_NO_CONTEXT;
+}
+
+extern int
+dclmGetInt(const DCLEDMatrix *dclm, DCLEDMatrixParam param)
+{
+	if (!dclm)
+		return -1;
+
+	switch(param) {
+		case DCLM_PARAM_ROWS:
+			return dclm->rows;
+		case DCLM_PARAM_COLUMNS:
+			return dclm->cols;
+	}
+
+	return -1;
 }
 
 extern DCLEDMatrixError

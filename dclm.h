@@ -1,6 +1,8 @@
 #ifndef DCLM_H
 #define DCLM_H
 
+#include "dclm_image.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -29,6 +31,12 @@ typedef enum {
 	DCLM_FAILED_CTRL_MSG	
 } DCLEDMatrixError;
 
+/* parameters */
+typedef enum {
+	DCLM_PARAM_ROWS=0,
+	DCLM_PARAM_COLUMNS
+} DCLEDMatrixParam;
+
 /* abstract data types */
 typedef struct DCLEDMatrix_s DCLEDMatrix;
 typedef struct DCLEDMatrixScreen_s DCLEDMatrixScreen;
@@ -49,6 +57,22 @@ dclmScrDestroy(DCLEDMatrixScreen *scr);
 extern void
 dclmScrSetPixel(DCLEDMatrixScreen *scr, unsigned int x, unsigned int y, int value);
 
+extern DCLMImage *
+dclmImageCreateFit(const DCLEDMatrix *dclm);
+
+extern void
+dclmScrFromImg(DCLEDMatrixScreen *scr, const DCLMImage *img);
+
+extern void
+dclmScrToiImg(const DCLEDMatrixScreen *scr, DCLMImage *img);
+
+#if 0
+extern void
+dclmScrFromImg(DCLEDMatrixScreen *scr, const DCLMImage *img,
+	       size_t from_x, size_t from_y, size_t w, size_t h,
+	       int to_x, int to_y);
+#endif
+
 /****************************************************************************
  * DCLM API                                                                 *
  ****************************************************************************/ 
@@ -58,6 +82,9 @@ dclmOpen(const char *options);
 
 extern DCLEDMatrixError
 dclmGetError(const DCLEDMatrix *dclm);
+
+extern int
+dclmGetInt(const DCLEDMatrix *dclm, DCLEDMatrixParam param);
 
 extern DCLEDMatrixError
 dclmSendScreen(DCLEDMatrixScreen *scr);
