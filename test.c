@@ -67,7 +67,7 @@ int main(int argc, char **argv)
 	if (dclm) {
 		DCLEDMatrixScreen *scr;
 		DCLMImage *img;
-		int i;
+		int i,j;
 
 		scr=dclmScrCreate(dclm);
 		img=dclmImageCreateFit(dclm);
@@ -82,9 +82,11 @@ int main(int argc, char **argv)
 		dclmImageSetPixel(img,20,6,0xff);
 		dclmImageSetPixel(img,20,0,0xff);
 
-		dclmScrFromImg(scr,img);
 		for (i=0; i<1000;i++) {
-			dclmSendScreen(scr);
+			dclmScrFromImgBlit(scr,img, 0,i,0,0,21,7);
+			for (j=0;j<100;j++) {
+				dclmSendScreen(scr);
+			}
 		}
 
 		dclmScrDestroy(scr);

@@ -526,16 +526,41 @@ dclmScrToiImg(const DCLEDMatrixScreen *scr, DCLMImage *img)
 	}
 }
 
-#if 0
+static void
+scr_set_row_wrap(uint8_t *scrdata, const uint8_t *imgdata, int to_x, int w, const uint8_t *img_end, size_t width)
+{
+	int byte=(DCLM_DATA_COLS-2)/2-1 - (to_x>>3);
+	int bit=to_x & 0x7;
+	int col;
+	uint8_t mask;
+	const uint8_t *iptr;
+
+	assert(to_x + w <= DCLM_COLS);
+
+	iptr=imgdata;
+
+	for (col=0; col < w; col++) {
+		int wrap;
+		mask=1<<bit;
+		scrdata[byte]=(~mask & scrdata[byte]) | (mask & ( (~*iptr) >> (7-bit)) );
+		byte-=(++bit)>>3;
+		bit &= 7;
+		wrap=((++iptr)==img_end);
+		iptr += wrap * (-width); 
+	}
+}
+
 extern void
-dclmScrFromImg(DCLEDMatrixScreen *scr, const DCLMImage *img,
-	       size_t from_x, size_t from_y, int w, int h,
-	       int to_x, int to_y)
+dclmScrFromImgBlit(DCLEDMatrixScreen *scr, const DCLMImage *img,
+                   size_t from_x, size_t from_y,
+                   int to_x, int to_y, int w, int h)
 {
 	DCLEDMatrix *dclm;
 	uint8_t *scrdata;
 	const uint8_t *imgdata;
 	int row;
+	int wrap;
+	size_t fx,fy;
 
 	assert(scr && scr->dclm && img);
 
@@ -564,13 +589,21 @@ dclmScrFromImg(DCLEDMatrixScreen *scr, const DCLMImage *img,
 
 	assert(img->dims[0] > 0 && img->dims[1] > 0);
 
-	scrdata=&scr->data[to_y/2][2] + (to_y & 1) * 3;
-	imgdata=DCLM_IMG_PIXEL(img, from_x % img->dims[0], from_y % img->dims[1]);
+	scrdata=&scr->data[to_y/2][2] + (to_y & 1) * ((DCLM_DATA_COLS-2)/2);
+
+	fx=from_x % img->dims[0];
+	fy=from_y % img->dims[1];
+	imgdata=DCLM_IMG_PIXEL(img, fx, fy);
+	wrap=dclm->cols-fx;
 	
 	for (row=0; row<h; row++) {
-		int col;
-		for (col=to_x; col <to_x+w; col++) {
-			static const
+		scr_set_row_wrap(scrdata, imgdata, to_x, w, imgdata + wrap, img->dims[0]);
+		scrdata+= (DCLM_DATA_COLS-2)/2 + (((row + to_y)& 1)<<1);
+		if (++fy == img->dims[1]) {
+			/* wrap around y */
+			imgdata=DCLM_IMG_PIXEL(img, fx, fy=0);
+		} else {
+			imgdata+=img->dims[0];
 		}
 	}
 
@@ -579,7 +612,6 @@ dclmScrFromImg(DCLEDMatrixScreen *scr, const DCLMImage *img,
 
 
 }
-#endif
 
 /****************************************************************************
  * MANAGEMENT OF THE DCLEDMatrix struct                                     *

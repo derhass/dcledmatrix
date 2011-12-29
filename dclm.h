@@ -66,12 +66,10 @@ dclmScrFromImg(DCLEDMatrixScreen *scr, const DCLMImage *img);
 extern void
 dclmScrToiImg(const DCLEDMatrixScreen *scr, DCLMImage *img);
 
-#if 0
 extern void
-dclmScrFromImg(DCLEDMatrixScreen *scr, const DCLMImage *img,
-	       size_t from_x, size_t from_y, size_t w, size_t h,
-	       int to_x, int to_y);
-#endif
+dclmScrFromImgBlit(DCLEDMatrixScreen *scr, const DCLMImage *img,
+                   size_t from_x, size_t from_y,
+                   int to_x, int to_y, int w, int h);
 
 /****************************************************************************
  * DCLM API                                                                 *
