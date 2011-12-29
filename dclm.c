@@ -39,6 +39,7 @@ struct DCLEDMatrix_s {
 	int rows;
 	int cols;
 	int max_brightness;
+	struct DCLEDMatrixScreen_s *scr_off;
 };
 
 struct DCLEDMatrixScreen_s {
@@ -633,12 +634,15 @@ dclmInit(DCLEDMatrix *dclm)
 	dclm->rows=DCLM_ROWS;
 	dclm->cols=DCLM_COLS;
 	dclm->max_brightness=DCLM_MAX_BRIGHTNESS;
+
+	dclm->scr_off=NULL;
 }
 
 static void
 dclmCleanup(DCLEDMatrix *dclm)
 {
 	if (dclm) {
+		dclmScrDestroy(dclm->scr_off);
 		dclmCloseUSBInternal(dclm);
 	}
 }
@@ -681,6 +685,8 @@ dclmOpen(const char *options)
 	dclm=dclmCreate();
 	if (dclm) {
 		dclmOpenUSB(dclm);
+		dclmScrDestroy(dclm->scr_off);
+		dclm->scr_off=dclmScrCreate(dclm);	
 	}
 	return dclm;
 }
@@ -731,6 +737,15 @@ dclmSendScreen(DCLEDMatrixScreen *scr)
 	}
 
 	return dclmSendScreenUSB(dclm, scr);
+}
+
+extern DCLEDMatrixError
+dclmBlankScreen(DCLEDMatrix *dclm)
+{
+	if (!dclm) {
+		return dclmError(NULL, DCLM_NO_CONTEXT, "BlankScreen");
+	}
+	return dclmSendScreen(dclm->scr_off);
 }
 
 extern DCLEDMatrixError 

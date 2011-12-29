@@ -87,6 +87,9 @@ dclmGetInt(const DCLEDMatrix *dclm, DCLEDMatrixParam param);
 extern DCLEDMatrixError
 dclmSendScreen(DCLEDMatrixScreen *scr);
 
+extern DCLEDMatrixError
+dclmBlankScreen(DCLEDMatrix *dclm);
+
 extern DCLEDMatrixError 
 dclmClose(DCLEDMatrix *dclm);
 
