@@ -14,7 +14,7 @@ endif
 
 # OpenGL Libraries 
 # all needed libraries
-LINK = -lm -lrt -lusb
+LINK = -lm -lpthread -lrt -lusb
 
 # Files
 
