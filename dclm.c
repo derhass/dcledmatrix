@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <assert.h>
-#include <libusb-1.0/libusb.h>
+#include <hidapi/hidapi.h>
 
 #include "dclm.h"
 
@@ -32,11 +32,8 @@ struct DCLEDMatrix_s {
 	DCLEDMatrixError error_state;
 	uint16_t idVendor;
 	uint16_t idProduct;
-	int retry_detach;
 	unsigned int flags;
-	libusb_context *ctx;
-	libusb_device_handle *dev;
-	int ifnum;
+	hid_device *dev;
 	int rows;
 	int cols;
 	int max_brightness;
@@ -75,142 +72,12 @@ dclmError(DCLEDMatrix *dclm, DCLEDMatrixError err, const char *template, ...)
 }
 
 /****************************************************************************
- * LIBUSB STUFF                                                             *
+ * LIBHIDAPI STUFF                                                          *
  ****************************************************************************/ 
 
 static DCLEDMatrixError
-dclmInitUSB(DCLEDMatrix *dclm)
+dclmOpenHID(DCLEDMatrix *dclm)
 {
-	/* TODO MH: are we allowed to call this twice or more times?
-	 * if not, we could use some reference counting her... */
-	libusb_init(&dclm->ctx);
-
-	return DCLM_OK;
-}
-
-static DCLEDMatrixError
-dclmDeinitUSB(DCLEDMatrix *dclm)
-{
-	libusb_exit(dclm->ctx);
-	dclm->ctx=NULL;;
-	return DCLM_OK;
-}
-
-static int
-isDCLMDevice(DCLEDMatrix *dclm, struct libusb_device_descriptor *dev)
-{
-	if (dev) {
-		if ( (dev->idVendor == dclm->idVendor) &&
-		     (dev->idProduct == dclm->idProduct)) {
-   			return 1;
-		}
-	}
-
-	/* not the device we are looking for */
-	return 0;
-}
-
-static DCLEDMatrixError
-dclmUseUSBDeviceConfig(DCLEDMatrix *dclm, libusb_device *dev, struct libusb_device_descriptor *desc, int config_id, int if_id)
-{
-	const struct libusb_interface *usb_if;
-	struct libusb_config_descriptor *conf;
-	int code = 0;
-	int config;
-	int interface;
-
-	if (desc->bNumConfigurations <= config_id) {
-		return DCLM_INVALID_CONFIG;
-	}
-	code = libusb_get_config_descriptor(dev, config_id, &conf);
-	if (code < 0) {
-		return DCLM_FAILED_CONFIG;
-	}
-	config=conf->bConfigurationValue;
-
-
-	if (conf->bNumInterfaces <= if_id) {
-		libusb_free_config_descriptor(conf);
-		return DCLM_INVALID_INTERFACE;
-	}
-	usb_if=&conf->interface[if_id];
-	if (usb_if->num_altsetting < 1) {
-		libusb_free_config_descriptor(conf);
-		return DCLM_INVALID_INTERFACE;
-	}
-
-	interface=usb_if->altsetting[0].bInterfaceNumber;
-
-
-	libusb_free_config_descriptor(conf);
-
-	code = libusb_set_configuration(dclm->dev, config);
-	if (code < 0) {
-		return DCLM_FAILED_CONFIG;
-	}
-	code = libusb_claim_interface(dclm->dev, interface);
-	if (code < 0) {
-		libusb_set_configuration(dclm->dev, -1);
-		return DCLM_FAILED_CLAIM;
-	}
-
-	dclm->ifnum=interface;
-	return DCLM_OK;
-}
-
-static DCLEDMatrixError
-dclmUseUSBDevice(DCLEDMatrix *dclm, struct libusb_device *dev, struct libusb_device_descriptor *desc)
-{
-	DCLEDMatrixError err;
-
-	if (libusb_open(dev,&dclm->dev)<0) {
-		return DCLM_USB_OPEN_FAILED;
-	}
-	
-	libusb_set_auto_detach_kernel_driver(dclm->dev, 1);
-
-	/* use first interface of first device */
-	err=dclmUseUSBDeviceConfig(dclm, dev, desc, 0, 0);
-
-	if (err) {
-		libusb_close(dclm->dev);
-	}
-	return err;
-}
-
-static DCLEDMatrixError
-dclmOpenUSBDevice(DCLEDMatrix *dclm)
-{
-	struct libusb_device_descriptor desc;
-	libusb_device **devList;
-	ssize_t cnt,i;
-	DCLEDMatrixError last_err=DCLM_OK;
-
-	cnt = libusb_get_device_list(dclm->ctx, &devList);
-	if (cnt < 0) {
-		return dclmError(dclm, DCLM_USB_ERROR, "get device list");
-	}
-
-	for (i=0; i<cnt; i++) {
-		if (libusb_get_device_descriptor(devList[i], &desc) >= 0) {
-			if (!isDCLMDevice(dclm,&desc)) {
-				continue;
-			}
-			if ( (last_err=dclmUseUSBDevice(dclm,devList[i],&desc)) == DCLM_OK) {
-				break;
-			}
-		}
-	}
-
-	libusb_free_device_list(devList, 1);
-	return last_err;
-}
-
-static DCLEDMatrixError
-dclmOpenUSB(DCLEDMatrix *dclm)
-{
-	DCLEDMatrixError err;
-
 	if (!dclm) {
 		return dclmError(NULL, DCLM_NO_CONTEXT, "OpenUSB");
 	}
@@ -218,12 +85,14 @@ dclmOpenUSB(DCLEDMatrix *dclm)
 		return 	dclmError(dclm, DCLM_ALREADY_OPEN, "OpenUSB");
 	}
 
-	if ( (err=dclmInitUSB(dclm)) ) {
-		return dclmError(dclm, err, "initialize libusb");
+	if (hid_init()) {
+		return dclmError(dclm, DCLM_FAILED_HIDAPI, "initialize libhidapi");
 	}
-	
-	if ( (err=dclmOpenUSBDevice(dclm)) ) {
-		return err;	
+
+	dclm->dev = hid_open(dclm->idVendor, dclm->idProduct, NULL);
+	if (!dclm->dev) {
+		hid_exit();
+		return DCLM_HID_OPEN_FAILED;
 	}
 
 	/* sucessfully openend the device */
@@ -232,28 +101,22 @@ dclmOpenUSB(DCLEDMatrix *dclm)
 }
 
 static DCLEDMatrixError
-dclmCloseUSBInternal(DCLEDMatrix *dclm)
+dclmCloseHIDInternal(DCLEDMatrix *dclm)
 {
 	DCLEDMatrixError err=DCLM_OK;
 	if (dclm->dev) {
-		if (dclm->ifnum >= 0) {
-			if (libusb_release_interface(dclm->dev, dclm->ifnum)) {
-				err=DCLM_FAILED_RELEASE;
-			}
-		}
-		libusb_set_configuration(dclm->dev, -1);
-		libusb_close(dclm->dev);
+		hid_close(dclm->dev);
 		dclm->dev=NULL;
 	}
 
-	dclmDeinitUSB(dclm);
+	hid_exit();
 
 	dclm->flags &= ~DCLM_OPEN;
 	return err;
 }
 
 static DCLEDMatrixError
-dclmCloseUSB(DCLEDMatrix *dclm)
+dclmCloseHID(DCLEDMatrix *dclm)
 {
 	if (!dclm) {
 		return dclmError(NULL, DCLM_NO_CONTEXT, "CloseUSB");
@@ -262,45 +125,31 @@ dclmCloseUSB(DCLEDMatrix *dclm)
 		return 	dclmError(dclm, DCLM_NOT_OPEN, "CloseUSB");
 	}
 
-	return dclmCloseUSBInternal(dclm);
+	return dclmCloseHIDInternal(dclm);
 }
 
 static DCLEDMatrixError
 dclmSendReport(DCLEDMatrix *dclm, const uint8_t *buffer, int size)
 {
 	int len;
-	int timeout;
 
 	assert(dclm);
 	assert(dclm->flags & DCLM_OPEN);
 	assert(dclm->dev);
-	assert(dclm->ifnum >= 0);
 	assert(size <= 4096);
 
-	/* TODO MH: adapt timeout to len */
-	timeout=8*size; /* in wort case, we should 6.25 ms per byte, so
-			  seems like a save default and is fast enough to calculate */
-	/* TODO MH: we simply ignore the report ID for now */
-	len=libusb_control_transfer(
-		dclm->dev, 
-		LIBUSB_RECIPIENT_INTERFACE | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_ENDPOINT_OUT,
-	        DCLM_REPORT_SEND, 
-		0 | (DCLM_RT_OUTPUT  << 8),
-		dclm->ifnum, 
-		(unsigned char*)buffer, 
-		size,
-		timeout);
+	len=hid_write(dclm->dev, buffer, size);
 
 	if (len != size) {
-		dclmError(dclm,DCLM_FAILED_CTRL_MSG,"failed to send USB HID report packet");
+		return dclmError(dclm,DCLM_FAILED_REPORT,"failed to send USB HID report packet");
 	}
 	return DCLM_OK;
 }
 
 static DCLEDMatrixError
-dclmSendScreenUSB(DCLEDMatrix *dclm, const DCLEDMatrixScreen *scr)
+dclmSendScreenHID(DCLEDMatrix *dclm, const DCLEDMatrixScreen *scr)
 {
-	int fail=0;
+	DCLEDMatrixError err = DCLM_OK;
 	int i;
 
 	assert(dclm);
@@ -308,10 +157,13 @@ dclmSendScreenUSB(DCLEDMatrix *dclm, const DCLEDMatrixScreen *scr)
 	assert(dclm == scr->dclm);
 
 	for (i=0; i<DCLM_DATA_ROWS; i++) {
-		fail+=dclmSendReport(dclm,&scr->data[i][0],DCLM_DATA_COLS);
+		DCLEDMatrixError res=dclmSendReport(dclm,&scr->data[i][0],DCLM_DATA_COLS);
+		if (res) {
+ 			err=res;
+		}
 	}
 
-	return fail?DCLM_FAILED_CTRL_MSG:DCLM_OK;
+	return err;
 }
 
 /****************************************************************************
@@ -603,11 +455,8 @@ dclmInit(DCLEDMatrix *dclm)
 	dclm->flags=DCLM_FLAGS_DEFAULT;
 	dclm->idVendor=DCLM_VENDOR_ID;
 	dclm->idProduct=DCLM_PRODUCT_ID;
-	dclm->retry_detach=DCLM_RETRY_DETACH;
 
-	dclm->ctx=NULL;
 	dclm->dev=NULL;
-	dclm->ifnum=-1;
 
 	dclm->rows=DCLM_ROWS;
 	dclm->cols=DCLM_COLS;
@@ -621,7 +470,7 @@ dclmCleanup(DCLEDMatrix *dclm)
 {
 	if (dclm) {
 		dclmScrDestroy(dclm->scr_off);
-		dclmCloseUSBInternal(dclm);
+		dclmCloseHIDInternal(dclm);
 	}
 }
 
@@ -662,7 +511,7 @@ dclmOpen(const char *options)
 
 	dclm=dclmCreate();
 	if (dclm) {
-		dclmOpenUSB(dclm);
+		dclmOpenHID(dclm);
 		dclmScrDestroy(dclm->scr_off);
 		dclm->scr_off=dclmScrCreate(dclm);	
 	}
@@ -714,7 +563,7 @@ dclmSendScreen(DCLEDMatrixScreen *scr)
 		return dclmError(NULL, DCLM_NOT_OPEN, "SendScreen");
 	}
 
-	return dclmSendScreenUSB(dclm, scr);
+	return dclmSendScreenHID(dclm, scr);
 }
 
 extern DCLEDMatrixError
@@ -731,7 +580,7 @@ dclmClose(DCLEDMatrix *dclm)
 {
 	DCLEDMatrixError err;
 	if (dclm) {
-		err=dclmCloseUSB(dclm);
+		err=dclmCloseHID(dclm);
 		dclmDestroy(dclm);
 		return err;
 	}

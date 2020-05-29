@@ -16,7 +16,7 @@ endif
 
 # OpenGL Libraries 
 # all needed libraries
-LINK = -lm -lpthread -lrt -lusb-1.0
+LINK = -lm -lpthread -lrt -lhidapi-libusb
 
 # Files
 
