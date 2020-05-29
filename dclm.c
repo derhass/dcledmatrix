@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <assert.h>
-#include <usb.h>
+#include <libusb-1.0/libusb.h>
 
 #include "dclm.h"
 
@@ -34,7 +34,8 @@ struct DCLEDMatrix_s {
 	uint16_t idProduct;
 	int retry_detach;
 	unsigned int flags;
-	usb_dev_handle *dev;
+	libusb_context *ctx;
+	libusb_device_handle *dev;
 	int ifnum;
 	int rows;
 	int cols;
@@ -78,28 +79,29 @@ dclmError(DCLEDMatrix *dclm, DCLEDMatrixError err, const char *template, ...)
  ****************************************************************************/ 
 
 static DCLEDMatrixError
-dclmInitUSB(void)
+dclmInitUSB(DCLEDMatrix *dclm)
 {
 	/* TODO MH: are we allowed to call this twice or more times?
 	 * if not, we could use some reference counting her... */
-	usb_init();
+	libusb_init(&dclm->ctx);
 
 	return DCLM_OK;
 }
 
 static DCLEDMatrixError
-dclmDeinitUSB(void)
+dclmDeinitUSB(DCLEDMatrix *dclm)
 {
-	(void)0;
+	libusb_exit(dclm->ctx);
+	dclm->ctx=NULL;;
 	return DCLM_OK;
 }
 
 static int
-isDCLMDevice(DCLEDMatrix *dclm, struct usb_device *dev)
+isDCLMDevice(DCLEDMatrix *dclm, struct libusb_device_descriptor *dev)
 {
 	if (dev) {
-		if ( (dev->descriptor.idVendor == dclm->idVendor) &&
-		     (dev->descriptor.idProduct == dclm->idProduct)) {
+		if ( (dev->idVendor == dclm->idVendor) &&
+		     (dev->idProduct == dclm->idProduct)) {
    			return 1;
 		}
 	}
@@ -109,131 +111,99 @@ isDCLMDevice(DCLEDMatrix *dclm, struct usb_device *dev)
 }
 
 static DCLEDMatrixError
-dclmDetachUSB(DCLEDMatrix *dclm, int ifnum)
+dclmUseUSBDeviceConfig(DCLEDMatrix *dclm, libusb_device *dev, struct libusb_device_descriptor *desc, int config_id, int if_id)
 {
-	int try;
+	const struct libusb_interface *usb_if;
+	struct libusb_config_descriptor *conf;
+	int code = 0;
+	int config;
+	int interface;
 
-	/* TODO MH: this is linux specific */
-	for (try=0; try < dclm->retry_detach; try++) {
-		if (usb_detach_kernel_driver_np(dclm->dev,ifnum)) {
-			/* TODO MH: error code, sleep? */
-			printf("DETACH FAILED!\n");
-		} else {
-			printf("DETACH OK!\n");
-			return DCLM_OK;
-		}
-	}
-
-	return DCLM_FAILED_DETACH;
-}
-
-static DCLEDMatrixError
-dclmUseUSBDeviceConfig(DCLEDMatrix *dclm, struct usb_device *dev, int config_id, int if_id)
-{
-	struct usb_config_descriptor *conf;
-	struct usb_interface_descriptor *usb_if;
-	DCLEDMatrixError err;
-	int detach=0;
-
-	if (dev->descriptor.bNumConfigurations <= config_id) {
+	if (desc->bNumConfigurations <= config_id) {
 		return DCLM_INVALID_CONFIG;
 	}
+	code = libusb_get_config_descriptor(dev, config_id, &conf);
+	if (code < 0) {
+		return DCLM_FAILED_CONFIG;
+	}
+	config=conf->bConfigurationValue;
 
-	conf=&dev->config[config_id];
 
 	if (conf->bNumInterfaces <= if_id) {
+		libusb_free_config_descriptor(conf);
+		return DCLM_INVALID_INTERFACE;
+	}
+	usb_if=&conf->interface[if_id];
+	if (usb_if->num_altsetting < 1) {
+		libusb_free_config_descriptor(conf);
 		return DCLM_INVALID_INTERFACE;
 	}
 
-	usb_if=conf->interface[if_id].altsetting;
+	interface=usb_if->altsetting[0].bInterfaceNumber;
 
-	do {
-		if (detach>0) {
-			if ( (err=dclmDetachUSB(dclm, usb_if->bInterfaceNumber)) ) {
-				return err;
-			}
-		}
-		detach++;
 
-		/* try to set the configuration */
-		if (usb_set_configuration(dclm->dev,conf->bConfigurationValue)) {
-			if (detach) {
-				return DCLM_FAILED_CONFIG;
-			}
-			/* retry after detaching the if */
-			continue;
-		}
+	libusb_free_config_descriptor(conf);
 
-		/* try to claim the interface */
-		if (usb_claim_interface(dclm->dev,usb_if->bInterfaceNumber)) {
-			if (detach) {
-				return DCLM_FAILED_CLAIM;
-			}
-			/* retry after detaching the if */
-			continue;
-		} else {
-			break;
-		}
-	} while (detach < 2);
+	code = libusb_set_configuration(dclm->dev, config);
+	if (code < 0) {
+		return DCLM_FAILED_CONFIG;
+	}
+	code = libusb_claim_interface(dclm->dev, interface);
+	if (code < 0) {
+		libusb_set_configuration(dclm->dev, -1);
+		return DCLM_FAILED_CLAIM;
+	}
 
-	dclm->ifnum=(int)usb_if->bInterfaceNumber;
+	dclm->ifnum=interface;
 	return DCLM_OK;
 }
 
 static DCLEDMatrixError
-dclmUseUSBDevice(DCLEDMatrix *dclm, struct usb_device *dev)
+dclmUseUSBDevice(DCLEDMatrix *dclm, struct libusb_device *dev, struct libusb_device_descriptor *desc)
 {
 	DCLEDMatrixError err;
 
-	dclm->dev=usb_open(dev);
-
-	if (!dclm->dev) {
+	if (libusb_open(dev,&dclm->dev)<0) {
 		return DCLM_USB_OPEN_FAILED;
 	}
+	
+	libusb_set_auto_detach_kernel_driver(dclm->dev, 1);
 
 	/* use first interface of first device */
-	err=dclmUseUSBDeviceConfig(dclm, dev, 0, 0);
+	err=dclmUseUSBDeviceConfig(dclm, dev, desc, 0, 0);
 
-	/* TODO MH: close usb device in error case? */
+	if (err) {
+		libusb_close(dclm->dev);
+	}
 	return err;
 }
 
 static DCLEDMatrixError
 dclmOpenUSBDevice(DCLEDMatrix *dclm)
 {
-	struct usb_bus *busses, *bus;
-	struct usb_device *dev;
+	struct libusb_device_descriptor desc;
+	libusb_device **devList;
+	ssize_t cnt,i;
 	DCLEDMatrixError last_err=DCLM_OK;
-	int found=0;
 
-	usb_find_busses();
-	usb_find_devices();
-
-	busses=usb_get_busses();
-	if (!busses) {
-		return dclmError(dclm, DCLM_USB_ERROR, "get busses");
+	cnt = libusb_get_device_list(dclm->ctx, &devList);
+	if (cnt < 0) {
+		return dclmError(dclm, DCLM_USB_ERROR, "get device list");
 	}
 
-	for (bus=busses; bus; bus=bus->next) {
-		for (dev=bus->devices; dev; dev=dev->next) {
-			/* printf("0x%x 0x%x 0x%x %s\n",dev->descriptor.idVendor, dev->descriptor.idProduct, dev->descriptor.bDeviceClass, dev->filename); */
-			if (isDCLMDevice(dclm, dev)) {
-				found++;
-
-				if ( (last_err=dclmUseUSBDevice(dclm,dev)) == DCLM_OK) {
-					return DCLM_OK;
-				}
-				/* otherwise: search for another device
-				 * which we might be able to use
-				 */
+	for (i=0; i<cnt; i++) {
+		if (libusb_get_device_descriptor(devList[i], &desc) >= 0) {
+			if (!isDCLMDevice(dclm,&desc)) {
+				continue;
+			}
+			if ( (last_err=dclmUseUSBDevice(dclm,devList[i],&desc)) == DCLM_OK) {
+				break;
 			}
 		}
 	}
-	
-	if (found) {
-		return dclmError(dclm,last_err,"failed to open USB device");
-	}
-	return dclmError(dclm,DCLM_NO_DEVICE,"no DCLEDMatrix device found");
+
+	libusb_free_device_list(devList, 1);
+	return last_err;
 }
 
 static DCLEDMatrixError
@@ -248,7 +218,7 @@ dclmOpenUSB(DCLEDMatrix *dclm)
 		return 	dclmError(dclm, DCLM_ALREADY_OPEN, "OpenUSB");
 	}
 
-	if ( (err=dclmInitUSB()) ) {
+	if ( (err=dclmInitUSB(dclm)) ) {
 		return dclmError(dclm, err, "initialize libusb");
 	}
 	
@@ -267,15 +237,16 @@ dclmCloseUSBInternal(DCLEDMatrix *dclm)
 	DCLEDMatrixError err=DCLM_OK;
 	if (dclm->dev) {
 		if (dclm->ifnum >= 0) {
-			if (usb_release_interface(dclm->dev, dclm->ifnum)) {
+			if (libusb_release_interface(dclm->dev, dclm->ifnum)) {
 				err=DCLM_FAILED_RELEASE;
 			}
 		}
-		usb_close(dclm->dev);
+		libusb_set_configuration(dclm->dev, -1);
+		libusb_close(dclm->dev);
 		dclm->dev=NULL;
 	}
 
-	dclmDeinitUSB();
+	dclmDeinitUSB(dclm);
 
 	dclm->flags &= ~DCLM_OPEN;
 	return err;
@@ -310,9 +281,15 @@ dclmSendReport(DCLEDMatrix *dclm, const uint8_t *buffer, int size)
 	timeout=8*size; /* in wort case, we should 6.25 ms per byte, so
 			  seems like a save default and is fast enough to calculate */
 	/* TODO MH: we simply ignore the report ID for now */
-	len=usb_control_msg(dclm->dev, USB_ENDPOINT_OUT + USB_TYPE_CLASS + USB_RECIP_INTERFACE,
-	                    DCLM_REPORT_SEND, 0 | (DCLM_RT_OUTPUT  << 8),
-			    dclm->ifnum, (char*)buffer, size, timeout);
+	len=libusb_control_transfer(
+		dclm->dev, 
+		LIBUSB_RECIPIENT_INTERFACE | LIBUSB_REQUEST_TYPE_CLASS | LIBUSB_ENDPOINT_OUT,
+	        DCLM_REPORT_SEND, 
+		0 | (DCLM_RT_OUTPUT  << 8),
+		dclm->ifnum, 
+		(unsigned char*)buffer, 
+		size,
+		timeout);
 
 	if (len != size) {
 		dclmError(dclm,DCLM_FAILED_CTRL_MSG,"failed to send USB HID report packet");
@@ -628,6 +605,7 @@ dclmInit(DCLEDMatrix *dclm)
 	dclm->idProduct=DCLM_PRODUCT_ID;
 	dclm->retry_detach=DCLM_RETRY_DETACH;
 
+	dclm->ctx=NULL;
 	dclm->dev=NULL;
 	dclm->ifnum=-1;
 

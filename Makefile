@@ -12,9 +12,11 @@ CFLAGS = -Wall -g
 CXXFLAGS = -Wall -g
 endif
 
+#CPPFLAGS += -Ilibusb-1.0
+
 # OpenGL Libraries 
 # all needed libraries
-LINK = -lm -lpthread -lrt -lusb
+LINK = -lm -lpthread -lrt -lusb-1.0
 
 # Files
 
@@ -62,7 +64,7 @@ $(DEPDIR)/%.d: %.cpp $(DEPDIR)/dir
 
 # rule to build application
 $(APPNAME): $(OBJECTS) $(DEPDIR)/dependencies
-	$(CXX) $(CFLAGS) $(LINK) $(LDFLAGS) $(OBJECTS) -o$(APPNAME)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LINK) $(LDFLAGS) $(OBJECTS) -o$(APPNAME)
 
 # remove all unneeded files
 .PHONY: clean
