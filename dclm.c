@@ -1,53 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <string.h>
 #include <assert.h>
-#include <hidapi/hidapi.h>
 
 #include "dclm.h"
-
-/****************************************************************************
- * CONFIGURATION DEFAULTS AND CONSTANTS                                     *
- ****************************************************************************/ 
-
-#define DCLM_VENDOR_ID 0x1d34
-#define DCLM_PRODUCT_ID 0x0013
-#define DCLM_RETRY_DETACH 5
-
-#define DCLM_REPORT_SEND 0x09
-#define DCLM_RT_OUTPUT 0x02
-
-#define DCLM_ROWS 7
-#define DCLM_COLS 21
-#define DCLM_MAX_BRIGHTNESS 2
-
-#define DCLM_DATA_ROWS 4
-#define DCLM_DATA_COLS 8
-
-/****************************************************************************
- * INTERNAL DATA TYPES                                                      *
- ****************************************************************************/ 
-
-struct DCLEDMatrix_s {
-	DCLEDMatrixError error_state;
-	uint16_t idVendor;
-	uint16_t idProduct;
-	unsigned int flags;
-	hid_device *dev;
-	int rows;
-	int cols;
-	int max_brightness;
-	struct DCLEDMatrixScreen_s *scr_off;
-};
-
-struct DCLEDMatrixScreen_s {
-	uint8_t data[DCLM_DATA_ROWS][DCLM_DATA_COLS];
-	DCLEDMatrix *dclm;
-};
-
-/* flags */
-#define DCLM_OPEN	0x1 /* device is opened */
-#define DCLM_FLAGS_DEFAULT 0
+#include "dclm_internal.h"
 
 /****************************************************************************
  * ERROR HANDLER                                                            *
@@ -170,28 +128,6 @@ dclmSendScreenHID(DCLEDMatrix *dclm, const DCLEDMatrixScreen *scr)
  * DCLEDMatrixScreen                                                        *
  ****************************************************************************/ 
 
-extern void
-dclmScrSetBrightness(DCLEDMatrixScreen *scr, int brightness)
-{
-	int i;
-	uint8_t b;
-
-	/* convert range 0 ... max_brightness to 
-	 * max_brightness ... 0. like the HW expects it */
-	if (brightness > scr->dclm->max_brightness) {
-		b=0; /* maximum brightness */
-	} else if (brightness < 0) {
-		b=scr->dclm->max_brightness; /* minimum brightness */
-	} else {
-		b=(uint8_t)(scr->dclm->max_brightness - brightness);
-	}
-
-
-	for (i=0; i<DCLM_DATA_ROWS; i++) {
-		scr->data[i][0]=b;
-	}
-}
-
 static void
 dclmScrInit(DCLEDMatrixScreen *scr)
 {
@@ -237,6 +173,38 @@ dclmScrDestroy(DCLEDMatrixScreen *scr)
 {
 	if (scr) {
 		free(scr);
+	}
+}
+
+extern void
+dclmScrSetBrightness(DCLEDMatrixScreen *scr, int brightness)
+{
+	int i;
+	uint8_t b;
+
+	/* convert range 0 ... max_brightness to 
+	 * max_brightness ... 0. like the HW expects it */
+	if (brightness > scr->dclm->max_brightness) {
+		b=0; /* maximum brightness */
+	} else if (brightness < 0) {
+		b=scr->dclm->max_brightness; /* minimum brightness */
+	} else {
+		b=(uint8_t)(scr->dclm->max_brightness - brightness);
+	}
+
+
+	for (i=0; i<DCLM_DATA_ROWS; i++) {
+		scr->data[i][0]=b;
+	}
+}
+
+extern void
+dclmScrClear(DCLEDMatrixScreen *scr, int value)
+{
+	int i;
+	uint8_t b = (value)?0x00:0xff;
+	for (i=0; i<DCLM_DATA_ROWS; i++) {
+		memset(&scr->data[i][2], b, (DCLM_DATA_COLS - 2));
 	}
 }
 
@@ -385,7 +353,7 @@ dclmScrFromImgBlit(DCLEDMatrixScreen *scr, const DCLMImage *img,
                    size_t from_x, size_t from_y,
                    int to_x, int to_y, int w, int h)
 {
-	DCLEDMatrix *dclm;
+	const DCLEDMatrix *dclm;
 	uint8_t *scrdata;
 	const uint8_t *imgdata;
 	int row;
@@ -436,11 +404,6 @@ dclmScrFromImgBlit(DCLEDMatrixScreen *scr, const DCLMImage *img,
 			imgdata+=img->dims[0];
 		}
 	}
-
-
-
-
-
 }
 
 /****************************************************************************

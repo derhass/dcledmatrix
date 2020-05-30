@@ -40,14 +40,17 @@ typedef struct DCLEDMatrixScreen_s DCLEDMatrixScreen;
  * DCLEDMatrixScreen                                                        *
  ****************************************************************************/ 
 
-extern void
-dclmScrSetBrightness(DCLEDMatrixScreen *scr, int brightness);
-
 extern DCLEDMatrixScreen *
 dclmScrCreate(DCLEDMatrix *dclm);
 
 extern void
 dclmScrDestroy(DCLEDMatrixScreen *scr);
+
+extern void
+dclmScrSetBrightness(DCLEDMatrixScreen *scr, int brightness);
+
+extern void
+dclmScrClear(DCLEDMatrixScreen *scr, int value);
 
 extern void
 dclmScrSetPixel(DCLEDMatrixScreen *scr, unsigned int x, unsigned int y, int value);

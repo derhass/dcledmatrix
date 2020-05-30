@@ -1,12 +1,16 @@
 #include "dclm.h"
+#include "dclm_font.h"
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <errno.h>
 
-#define DCLMD_DEFAULT_REFRESH_MS 250 /* maximum time between LED matrix refresh */
+#define DCLMD_DEFAULT_REFRESH_MS 300 /* maximum time between LED matrix refresh */
+#define DCLM_MAX_TEXT_LENGTH 255
+
 
 /****************************************************************************
  * ERRORS and DIAGNOSTICS                                                   *
@@ -162,6 +166,7 @@ dctxOpen(DCLMContext *dc, const char *options)
 
 typedef enum {
 	DCLMT_CMD_SHOW_IMAGE=0,
+	DCLMT_CMD_SHOW_TEXT,
 	DCLMT_CMD_BLANK,	/* go to blank screen, stop refreshing */
 	DCLMT_CMD_STOP,		/* stop refreshing */
 	DCLMT_CMD_EXIT		/* exit thread */
@@ -169,6 +174,7 @@ typedef enum {
 
 typedef struct {
 	const DCLMImage *img;
+	char text[DCLM_MAX_TEXT_LENGTH+1];
 	size_t pos_x;
 	size_t pos_y;
 	DCLMTCmd cmd;
@@ -207,14 +213,25 @@ get_command(DCLMTContext *tc,  DCLMTWorkEntry *current)
 	}
 
 	/* parse command */
-	if (current->cmd == DCLMT_CMD_SHOW_IMAGE) {
-		if (current->img) {
-			dclmScrFromImgBlit(tc->dc.scr,current->img,current->pos_x, current->pos_y,0,0,tc->dc.cols,tc->dc.rows);
-		} else {
-			current->cmd = DCLMT_CMD_BLANK;
-		}
-	} else {
-		current->img=NULL;
+	switch (current->cmd) {
+		case DCLMT_CMD_SHOW_IMAGE:
+			if (current->img) {
+				dclmScrFromImgBlit(tc->dc.scr,current->img,current->pos_x, current->pos_y,0,0,tc->dc.cols,tc->dc.rows);
+			} else {
+				current->cmd = DCLMT_CMD_BLANK;
+			}
+			break;
+		case DCLMT_CMD_SHOW_TEXT:
+			current->img=NULL;
+			if (current->text[0]) {
+				current->text[DCLM_MAX_TEXT_LENGTH]=0;
+				dclmTextToScr(tc->dc.scr,current->pos_x, current->text, 0, dclmFontBase);
+			} else {
+				current->cmd = DCLMT_CMD_BLANK;
+			}
+			break;
+		default:
+			current->img=NULL;
 	}
 }
 
@@ -264,6 +281,7 @@ lm_thread(void *tc_v)
 
 		switch(current.cmd) {
 			case DCLMT_CMD_SHOW_IMAGE:
+			case DCLMT_CMD_SHOW_TEXT:
 				dclmSendScreen(tc->dc.scr);
 				/* wait until new command, or until timeout to refresh */
 				calc_wait_time_ms(&wait_ts, &loop_time, tc->refresh_ms);
@@ -362,7 +380,7 @@ dtctxStart(DCLMTContext *dtc, const char *options)
 }
 
 static int
-dtctxNewData(DCLMTContext *dtc, const DCLMImage *img, size_t x, size_t y, DCLMTCmd cmd)
+dtctxNewData(DCLMTContext *dtc, const DCLMImage *img, size_t x, size_t y, const char *text, DCLMTCmd cmd)
 {
 	if ( (dtc->flags & (DCLMT_THREAD_STARTED | DCLMT_SEM_FREE_INIT | DCLMT_SEM_AVAIL_INIT)) !=
              (DCLMT_THREAD_STARTED | DCLMT_SEM_FREE_INIT | DCLMT_SEM_AVAIL_INIT)) {
@@ -374,6 +392,9 @@ dtctxNewData(DCLMTContext *dtc, const DCLMImage *img, size_t x, size_t y, DCLMTC
 	}
 
 	dtc->communication.img=img;
+	if (text) {
+		strncpy((char*)dtc->communication.text, text, sizeof(dtc->communication.text));
+	}
 	dtc->communication.pos_x=x;
 	dtc->communication.pos_y=y;
 	dtc->communication.cmd=cmd;
@@ -398,7 +419,7 @@ dtctxStopThread(DCLMTContext *dtc)
 	dclmdDebug("stopping LED matrix thread");
 
 	/* Signal the thread that it should exit */
-	if (dtctxNewData(dtc, NULL, 0, 0, DCLMT_CMD_EXIT)) {
+	if (dtctxNewData(dtc, NULL, 0, 0, NULL, DCLMT_CMD_EXIT)) {
 		 dclmdWarning("can't signal LED matrix thread to stop, ignoring it");
 		 return -1;
 	}
@@ -498,11 +519,23 @@ int main(int argc, char **argv)
 		dclmImageSetPixel(img,6,6,0xff);
 		dclmImageSetPixel(img,20,6,0xff);
 		dclmImageSetPixel(img,20,0,0xff);
-		dtctxNewData(&ddc.tc, img, 0,0, DCLMT_CMD_SHOW_IMAGE);
-		ts.tv_sec=5;
+		dtctxNewData(&ddc.tc, img, 0,0, NULL, DCLMT_CMD_SHOW_IMAGE);
+		ts.tv_sec=1;
 		ts.tv_nsec=0;
 		nanosleep(&ts,NULL);
-		dtctxNewData(&ddc.tc, NULL, 0,0, DCLMT_CMD_SHOW_IMAGE);
+		dtctxNewData(&ddc.tc, NULL, 0,0, "Test", DCLMT_CMD_SHOW_TEXT);
+		ts.tv_sec=1;
+		ts.tv_nsec=0;
+		nanosleep(&ts,NULL);
+		dtctxNewData(&ddc.tc, NULL, 0,0, "LIVE", DCLMT_CMD_SHOW_TEXT);
+		ts.tv_sec=1;
+		ts.tv_nsec=0;
+		nanosleep(&ts,NULL);
+		dtctxNewData(&ddc.tc, NULL, 0,0, "PAUS", DCLMT_CMD_SHOW_TEXT);
+		ts.tv_sec=1;
+		ts.tv_nsec=0;
+		nanosleep(&ts,NULL);
+		dtctxNewData(&ddc.tc, NULL, 0,0, NULL, DCLMT_CMD_SHOW_IMAGE);
 		dclmImageDestroy(img);
 	}
 	ddctxCleanup(&ddc);

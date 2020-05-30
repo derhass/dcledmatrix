@@ -1,4 +1,5 @@
 #include "dclm.h"
+#include "dclm_font.h"
 #include <stdio.h>
 
 #if 0
@@ -79,11 +80,24 @@ int main2(int argc, char **argv)
 		dclmImageSetPixel(img,4,4,0xff);
 		dclmImageSetPixel(img,5,5,0xff);
 		dclmImageSetPixel(img,6,6,0xff);
-		dclmImageSetPixel(img,20,6,0xff);
-		dclmImageSetPixel(img,20,0,0xff);
+		dclmImageSetPixel(img,7,5,0xff);
+		dclmImageSetPixel(img,8,4,0xff);
+		dclmImageSetPixel(img,9,3,0xff);
+		dclmImageSetPixel(img,10,2,0xff);
+		dclmImageSetPixel(img,11,1,0xff);
+		dclmImageSetPixel(img,12,0,0xff);
+		dclmImageSetPixel(img,13,1,0xff);
+		dclmImageSetPixel(img,14,2,0xff);
+		dclmImageSetPixel(img,15,3,0xff);
+		dclmImageSetPixel(img,16,4,0xff);
+		dclmImageSetPixel(img,17,5,0xff);
+		dclmImageSetPixel(img,18,6,0xff);
+		dclmImageSetPixel(img,19,5,0xff);
+		dclmImageSetPixel(img,20,4,0xff);
+
 
 		for (i=0; i<1000;i++) {
-			dclmScrFromImgBlit(scr,img, 0,i,0,0,21,7);
+			dclmScrFromImgBlit(scr,img, i,0,0,0,21,7);
 			for (j=0;j<100;j++) {
 				dclmSendScreen(scr);
 			}
@@ -91,6 +105,52 @@ int main2(int argc, char **argv)
 
 		dclmScrDestroy(scr);
 		dclmImageDestroy(img);
+		dclmClose(dclm);
+	}
+
+	return 0;
+}
+
+int main3(int argc, char **argv)
+{
+	DCLEDMatrix *dclm;
+	uint8_t testchar[] = { 0x00, 0x00, 0x0E, 0x09, 0x0E, 0x08, 0x06 };
+	int i,j;
+
+	/*
+	for (j=0;j<256;j++) {
+		printf("{ ");
+	for (i=0; i<7; i++) {
+		testchar[i] = ~testchar[i];
+		font[j][i] = ~font[j][i];
+		if (i) {
+			printf(", ");
+		}
+		printf("0x%02x",font[j][i]);
+	}
+	printf(" },\n");
+        }
+	*/
+
+	dclm=dclmOpen("test");
+	if (dclm) {
+		DCLEDMatrixScreen *scr;
+		int i,j;
+
+		scr=dclmScrCreate(dclm);
+
+		for (i=0; i<1000;i++) {
+			//dclmScrClear(scr, 1);
+			//dclmCharToScr(scr, i%22 , 'g', dclmFontBase);
+			//dclmCharBitsToScr(scr, i%22 , testchar);
+			//dclmCharBitsToScr(scr, (i%27)-5 , dclmFontBase+'g'*7);
+			dclmTextToScr(scr, (i%27)-5 , "Test", 0, dclmFontBase);
+			for (j=0;j<100;j++) {
+				dclmSendScreen(scr);
+			}
+		}
+
+		dclmScrDestroy(scr);
 		dclmClose(dclm);
 	}
 
