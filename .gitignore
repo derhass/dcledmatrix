@@ -1,5 +1,8 @@
-*.o
+built/
+dep/
+bin/
+lib/
+dclm.tgz
+
 *.swp
 *~
-dep/
-dclmtest

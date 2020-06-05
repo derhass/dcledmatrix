@@ -58,7 +58,6 @@ int main(int argc, char **argv)
 
 	return 0;
 }
-#endif
 
 int main2(int argc, char **argv)
 {
@@ -110,14 +109,15 @@ int main2(int argc, char **argv)
 
 	return 0;
 }
+#endif
 
-int main3(int argc, char **argv)
+int main(int argc, char **argv)
 {
 	DCLEDMatrix *dclm;
-	uint8_t testchar[] = { 0x00, 0x00, 0x0E, 0x09, 0x0E, 0x08, 0x06 };
-	int i,j;
 
 	/*
+	uint8_t testchar[] = { 0x00, 0x00, 0x0E, 0x09, 0x0E, 0x08, 0x06 };
+	int i,j;
 	for (j=0;j<256;j++) {
 		printf("{ ");
 	for (i=0; i<7; i++) {
@@ -144,8 +144,8 @@ int main3(int argc, char **argv)
 			//dclmCharToScr(scr, i%22 , 'g', dclmFontBase);
 			//dclmCharBitsToScr(scr, i%22 , testchar);
 			//dclmCharBitsToScr(scr, (i%27)-5 , dclmFontBase+'g'*7);
-			dclmTextToScr(scr, (i%27)-5 , "Test", 0, dclmFontBase);
-			for (j=0;j<100;j++) {
+			dclmTextToScr(scr, (i%47)-25 , "Test", 0, dclmFontBase);
+			for (j=0;j<40;j++) {
 				dclmSendScreen(scr);
 			}
 		}

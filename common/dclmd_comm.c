@@ -1,5 +1,4 @@
 #include "dclmd_comm.h"
-#include "dclm_internal.h"
 
 #include <stdio.h>
 #include <sys/mman.h>
@@ -8,6 +7,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
+#include <time.h>
 
 /****************************************************************************
  * INTERNAL: SHARED OBJECT NAMES                                            *
@@ -27,6 +27,30 @@ dclmdCommNameShm(char *str, size_t len)
 {
 	snprintf(str, len, "%s-shm", DCLMD_COMM_SHARED_PREFIX);
 }
+
+/****************************************************************************
+ * INTERNAL API: TIMING HELPERS                                             *
+ ****************************************************************************/ 
+
+/* calculate the time in ms milliseconds from now
+ * if now is NULL, get the current time internally */
+static void
+dclmdCalcWaitTimeMS(struct timespec *ts, const struct timespec *now, unsigned int ms)
+{
+	struct timespec intnow;
+	long part_ms=(long)(ms%1000);
+	if (!now) {
+		clock_gettime(CLOCK_REALTIME, &intnow);
+		now=&intnow;
+	}
+	ts->tv_sec=now->tv_sec + ms/1000;
+	ts->tv_nsec=now->tv_nsec + part_ms*1000000L;
+	if (ts->tv_nsec >= 1000000000) {
+		ts->tv_sec++;
+		ts->tv_nsec-=1000000000;
+	}
+}
+
 
 /****************************************************************************
  * INTERNAL: SEMAPHORE HELPERS                                              *
@@ -63,7 +87,6 @@ dclmdSemUnlink(unsigned int idx)
 	sem_unlink(name);
 }
 
-#if 0
 static int
 dclmdSemWait(sem_t *sem)
 {
@@ -82,7 +105,6 @@ dclmdSemWait(sem_t *sem)
 
 	return -1;
 }
-#endif
 
 static int
 dclmdSemTryWait(sem_t *sem)
@@ -130,8 +152,7 @@ static int
 dclmdSemTimedWaitMS(sem_t *sem, unsigned int ms)
 {
 	struct timespec ts;
-	ts.tv_sec = ms / 1000;
-	ts.tv_nsec = (ms % 1000) * 1000000;
+	dclmdCalcWaitTimeMS(&ts, NULL, ms);
 
 	return dclmdSemTimedWait(sem, &ts);
 }
@@ -184,12 +205,12 @@ dclmdCommGetImg(DCLMDComminucation *comm)
  *       -1: error
  */
 static int
-dclmdCommInitDaemon(DCLMDComminucation *comm)
+dclmdCommInitDaemon(DCLMDComminucation *comm, int dims_x, int dims_y)
 {
 	int res;
 
-	comm->work->dims[0] = DCLM_COLS;
-	comm->work->dims[1] = DCLM_ROWS;
+	comm->work->dims[0] = dims_x;
+	comm->work->dims[1] = dims_y;
 
 	comm->work->cmd=DCLMD_CMD_NONE;
 	comm->work->pos_x = 0;
@@ -244,15 +265,20 @@ dclmdCommInitClient(DCLMDComminucation *comm)
  *        -2: shm error
  */
 static int
-dclmdCommOpen(DCLMDComminucation *comm, int as_daemon)
+dclmdCommOpen(DCLMDComminucation *comm, int as_daemon, int dims_x, int dims_y)
 {
 	char name[DCLMD_COMM_SHARED_NAME_LEN];
-	dclmdCommNameShm(name, sizeof(name));
 	int res;
+	dclmdCommNameShm(name, sizeof(name));
 
 	if (as_daemon) {
 		comm->flags |= DCLMD_FLAG_DAEMON;
-		comm->shm_size = sizeof(*comm->work) + DCLM_ROWS * DCLM_COLS;
+
+		if (dims_x < 1 || dims_y < 1) {
+			return -1;
+		}
+
+		comm->shm_size = sizeof(*comm->work) + dims_x * dims_y;
 		comm->sem_mutex = dclmdSemCreate(0, 1);
 		comm->sem_command = dclmdSemCreate(1, 0);
 		if (!comm->sem_mutex || !comm->sem_command) {
@@ -310,7 +336,7 @@ dclmdCommOpen(DCLMDComminucation *comm, int as_daemon)
 	}
 
 	if (as_daemon) {
-		return dclmdCommInitDaemon(comm);
+		return dclmdCommInitDaemon(comm, dims_x, dims_y);
 	} else {
 		return dclmdCommInitClient(comm);
 	}
@@ -327,7 +353,7 @@ dclmdCommOpen(DCLMDComminucation *comm, int as_daemon)
  *         NULL on error
  */ 
 extern DCLMDComminucation *
-dclmdCommunicationCreate(int as_daemon)
+dclmdCommunicationCreate(int as_daemon, int dims_x, int dims_y)
 {
 	DCLMDComminucation *comm = malloc(sizeof(*comm));
 	if (!comm) {
@@ -336,7 +362,7 @@ dclmdCommunicationCreate(int as_daemon)
 
 	dclmdCommInit(comm);
 
-	if (dclmdCommOpen(comm, as_daemon)) {
+	if (dclmdCommOpen(comm, as_daemon, dims_x, dims_y)) {
 		dclmdCommunicationDestroy(comm);
 		comm=NULL;
 	}
@@ -436,5 +462,67 @@ dclmdClientUnlock(DCLMDComminucation *comm)
 	}
 
 	return 0;
+}
+
+/* Wait for a command from the client,
+ * if reached, lock the mutex
+ * timeout_ms: the timeout from now, in milliseconds
+ *             of DCLMD_TIMEOUT_INFINITE: no timeout
+ * RETURN 1: got client command, mutex locked
+ *        0: got no command, mutex not locked
+ *       -1: error
+ */
+extern int
+dclmdDaemonGetCommand(DCLMDComminucation *comm, unsigned int timeout_ms, const struct timespec * now)
+{
+	struct timespec until;
+	int res;
+
+	if (timeout_ms == DCLMD_TIMEOUT_INFINITE) {
+		res = dclmdSemWait(comm->sem_command);
+	} else {
+		dclmdCalcWaitTimeMS(&until, now, timeout_ms);
+		res = dclmdSemTimedWait(comm->sem_command, &until);
+	}
+
+	if (res < 0) {
+		return -1;
+	}
+	if (res > 0) {
+		return 0;
+	}
+
+	/* count down semaphore to be sure */
+	while(!dclmdSemTryWait(comm->sem_command));
+
+	/* lock the mutex */
+	dclmdCalcWaitTimeMS(&until, now, timeout_ms);
+	res = dclmdSemTimedWait(comm->sem_mutex, &until);
+	if (res < 0) {
+		return -1;
+	}
+	if (res > 0) {
+		/* assume client is dead, unlock it again for the next client */
+		if (sem_post(comm->sem_mutex)) {
+			return -1;
+		}
+		return 0;
+	}
+
+	return 1;
+}
+
+/* Unlock the mutex from the daemon side
+ * Must only be called after dclmdDaemonGetCommand() returned 1
+ * RETURN 0: OK
+ *       -1: error
+ */
+extern int
+dclmdDaemonUnlock(DCLMDComminucation *comm)
+{
+	/* count down semaphore to be sure */
+	while(!dclmdSemTryWait(comm->sem_mutex));
+
+	return sem_post(comm->sem_mutex);
 }
 

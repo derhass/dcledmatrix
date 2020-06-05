@@ -214,12 +214,12 @@ dclmScrSetPixel(DCLEDMatrixScreen *scr, unsigned int x, unsigned int y, int valu
 	uint8_t *data;
 	unsigned int bit;
 
-	if (y >= scr->dclm->rows) {
+	if (y >= (unsigned)scr->dclm->rows) {
 		return;
 	}
 
 	data=&scr->data[0][2] + DCLM_DATA_COLS * (y >> 1) + 3 * (y & 1);
-	if (x >= scr->dclm->cols) {
+	if (x >= (unsigned)scr->dclm->cols) {
 		return;
 	}
 

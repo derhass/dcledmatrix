@@ -58,12 +58,13 @@ typedef struct {
 
 /* Create the communication interface.
  * If daemon is true: create the deamon side,
+ * in daemon mode, the size of the LED matrix must be specified!
  * otherwise create the client side.
  * RETURN: pointer to newly alloced structure,
  *         NULL on error
  */ 
 extern DCLMDComminucation *
-dclmdCommunicationCreate(int deamon);
+dclmdCommunicationCreate(int deamon, int dims_x, int dims_y);
 
 /* Destroy the communication interface */
 extern void
@@ -86,6 +87,27 @@ dclmdClientLock(DCLMDComminucation *comm);
  */
 extern DCLEDMatrixError
 dclmdClientUnlock(DCLMDComminucation *comm);
+
+/* Wait for a command from the client,
+ * if reached, lock the mutex
+ * timeout_ms: the timeout from now, in milliseconds
+ *             of DCLMD_TIMEOUT_INFINITE: no timeout
+ * RETURN 1: got client command, mutex locked
+ *        0: got no command, mutex not locked
+ *       -1: error
+ */
+extern int
+dclmdDaemonGetCommand(DCLMDComminucation *comm, unsigned int timeout_ms, const struct timespec * now);
+
+#define DCLMD_TIMEOUT_INFINITE ((unsigned int)-1)
+
+/* Unlock the mutex from the daemon side
+ * Must only be called after dclmdDaemonGetCommand() returned 1
+ * RETURN 0: OK
+ *       -1: error
+ */
+extern int
+dclmdDaemonUnlock(DCLMDComminucation *comm);
 
 #ifdef __cplusplus
 }	/* extern "C" */
