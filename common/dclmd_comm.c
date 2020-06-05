@@ -7,6 +7,8 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 /****************************************************************************
@@ -462,6 +464,33 @@ dclmdClientUnlock(DCLMDComminucation *comm)
 	}
 
 	return 0;
+}
+
+/* Full cycle: Show text
+ * if str is NULL: blank
+ * If len is 0: use strlen
+ */
+extern DCLEDMatrixError
+dclmdClientShowText(DCLMDComminucation *comm, const char *str, size_t len, int pos_x)
+{
+	DCLEDMatrixError err;
+	if ( (err = dclmdClientLock(comm) ) == DCLM_OK ) {
+		DCLMDWorkEntry *work = comm->work;
+		/* note: it is OK if work->text is not 0-terminated, dclmd takes care */
+		if (len) {
+			if (len >= sizeof(work->text)) {
+				len = sizeof(work->text) - 1;
+			}
+			memcpy(work->text, str, len);
+			work->text[len+1]=0;
+		} else {
+			strncpy(work->text, str, sizeof(work->text));
+		}
+		work->cmd = DCLMD_CMD_SHOW_TEXT;
+		work->pos_x = pos_x;
+		err = dclmdClientUnlock(comm);
+	}
+	return err;
 }
 
 /* Wait for a command from the client,

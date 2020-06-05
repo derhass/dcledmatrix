@@ -9,7 +9,7 @@ TOP = .
 include ${TOP}/options.mk
 
 SUBSYSTEM=1
-SUBDIRS = dclmd test
+SUBDIRS = dclmd libdclmd dclmclient test
 EXTRAS = base common Makefile config.mk options.mk dclm.mk .gitignore 
  
 # use the build rules from the main makefiles

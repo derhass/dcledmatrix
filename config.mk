@@ -15,7 +15,7 @@ CFLAGS_SHARED = -fPIC -Bsymbolic
 CFLAGS_DEBUG = -g -Werror
 
 # flags for RELEASE builds
-CFLAGS_RELEASE = -ffast-math -s -O5 -DNDEBUG
+CFLAGS_RELEASE = -flto -ffast-math -s -O5 -DNDEBU
 
 # directories
 BINPATH=${TOP}/bin

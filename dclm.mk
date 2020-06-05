@@ -20,7 +20,11 @@ endif
 .PHONY: default
 default: all
 
+ifeq ($(LIBRARY),1)
+BUILDDIR=${BUILDPATH}/lib/${MODULE}
+else
 BUILDDIR=${BUILDPATH}/${MODULE}
+endif
 BUILDOBJECTS=$(addprefix $(BUILDDIR)/,$(SRCFILES))
 
 CPPFLAGS += $(INCLUDEFLAGS)

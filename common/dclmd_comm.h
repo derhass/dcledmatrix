@@ -88,6 +88,13 @@ dclmdClientLock(DCLMDComminucation *comm);
 extern DCLEDMatrixError
 dclmdClientUnlock(DCLMDComminucation *comm);
 
+/* Full cycle: Show text
+ * if str is NULL: blank
+ * If len is 0: use strlen
+ */
+extern DCLEDMatrixError
+dclmdClientShowText(DCLMDComminucation *comm, const char *str, size_t len, int pos_x);
+
 /* Wait for a command from the client,
  * if reached, lock the mutex
  * timeout_ms: the timeout from now, in milliseconds
