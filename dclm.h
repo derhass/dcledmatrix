@@ -1,6 +1,7 @@
 #ifndef DCLM_H
 #define DCLM_H
 
+#include "dclm_error.h"
 #include "dclm_image.h"
 
 #ifdef __cplusplus
@@ -10,21 +11,6 @@ extern "C" {
 /****************************************************************************
  * DATA TYPES                                                               *
  ****************************************************************************/ 
-
-/* status codes */
-typedef enum {
-	DCLM_OK=0,
-	DCLM_OUT_OF_MEMORY,
-	DCLM_NO_CONTEXT,
-	DCLM_NO_SCREEN,
-	DCLM_NOT_OPEN,
-	DCLM_ALREADY_OPEN,
-	DCLM_NO_DEVICE,
-	DCLM_HID_OPEN_FAILED,
-	DCLM_FAILED_HIDAPI,
-	DCLM_FAILED_REPORT,
-	DCLM_INVALID_CONFIG,
-} DCLEDMatrixError;
 
 /* parameters */
 typedef enum {
