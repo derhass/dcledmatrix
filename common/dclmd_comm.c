@@ -31,12 +31,12 @@ dclmdCommNameShm(char *str, size_t len)
 }
 
 /****************************************************************************
- * INTERNAL API: TIMING HELPERS                                             *
+ * TIMING HELPERS                                                           *
  ****************************************************************************/ 
 
 /* calculate the time in ms milliseconds from now
  * if now is NULL, get the current time internally */
-static void
+extern void
 dclmdCalcWaitTimeMS(struct timespec *ts, const struct timespec *now, unsigned int ms)
 {
 	struct timespec intnow;
@@ -51,6 +51,29 @@ dclmdCalcWaitTimeMS(struct timespec *ts, const struct timespec *now, unsigned in
 		ts->tv_sec++;
 		ts->tv_nsec-=1000000000;
 	}
+}
+
+/* compare two timespecs
+ * RETURN -1: a before b
+ *         0: a == b
+ *         1: a after b
+ */
+extern int
+dclmdCompareTime(const struct timespec *a, const struct timespec *b)
+{
+	if (a->tv_sec < b->tv_sec) {
+		return -1;
+	}
+	if (a->tv_sec > b->tv_sec) {
+		return 1;
+	}
+	if (a->tv_nsec < b->tv_nsec) {
+		return -1;
+	}
+	if (a->tv_nsec > b->tv_nsec) {
+		return 1;
+	}
+	return 0;
 }
 
 /****************************************************************************
@@ -210,12 +233,15 @@ dclmdCommInitDaemon(DCLMDComminucation *comm, int dims_x, int dims_y)
 {
 	int res;
 
+	comm->work->hdr_size = sizeof(*comm->work);
+	comm->work->hdr_version = DCLMD_COMM_VERSION;
 	comm->work->dims[0] = dims_x;
 	comm->work->dims[1] = dims_y;
 
-	comm->work->cmd=DCLMD_CMD_NONE;
-	comm->work->pos_x = 0;
-	comm->work->pos_y = 0;
+	comm->work->cmd_flags = 0;
+	comm->work->img_pos_x = 0;
+	comm->work->img_pos_y = 0;
+	comm->work->text_pos_x = 0;
 	comm->work->text[0] = 0;
 
 	if (dclmdCommGetImg(comm)) {
@@ -250,7 +276,18 @@ dclmdCommInitClient(DCLMDComminucation *comm)
 		return -1;
 	}
 
+	if (comm->work->hdr_size != sizeof(*comm->work)) {
+		/* incompatible version */
+		return -1;
+	}
+
+	if (comm->work->hdr_version != DCLMD_COMM_VERSION) {
+		/* incompatible version */
+		return -1;
+	}
+
 	res = dclmdCommGetImg(comm);
+
 
 	/* unlock the semaphore */
 	if (sem_post(comm->sem_mutex)) {
@@ -482,9 +519,10 @@ dclmdClientUnlock(DCLMDComminucation *comm)
 /* Full cycle: Show text
  * if str is NULL: blank
  * If len is 0: use strlen
+ * timeout_ms: 0 means infinite
  */
 extern DCLEDMatrixError
-dclmdClientShowText(DCLMDComminucation *comm, const char *str, size_t len, int pos_x)
+dclmdClientShowText(DCLMDComminucation *comm, const char *str, size_t len, int pos_x,  unsigned int additional_flags, unsigned int timeout_ms)
 {
 	DCLEDMatrixError err;
 	if ( (err = dclmdClientLock(comm) ) == DCLM_OK ) {
@@ -499,8 +537,9 @@ dclmdClientShowText(DCLMDComminucation *comm, const char *str, size_t len, int p
 		} else {
 			strncpy(work->text, str, sizeof(work->text));
 		}
-		work->cmd = DCLMD_CMD_SHOW_TEXT;
-		work->pos_x = pos_x;
+		work->timeout_ms = timeout_ms;
+		work->cmd_flags |= DCLMD_CMD_SHOW_TEXT | DCLMD_CMD_TIMEOUT | additional_flags;
+		work->text_pos_x = pos_x;
 		err = dclmdClientUnlock(comm);
 	}
 	return err;
@@ -509,13 +548,13 @@ dclmdClientShowText(DCLMDComminucation *comm, const char *str, size_t len, int p
 /* Full cycle: Blank the screen
  */
 extern DCLEDMatrixError
-dclmdClientBlank(DCLMDComminucation *comm)
+dclmdClientBlank(DCLMDComminucation *comm, unsigned int additional_flags)
 {
 	DCLEDMatrixError err;
 	if ( (err = dclmdClientLock(comm) ) == DCLM_OK ) {
 		DCLMDWorkEntry *work = comm->work;
 		/* note: it is OK if work->text is not 0-terminated, dclmd takes care */
-		work->cmd = DCLMD_CMD_BLANK;
+		work->cmd_flags = DCLMD_CMD_CLEAR_SCREEN | additional_flags;
 		err = dclmdClientUnlock(comm);
 	}
 	return err;
@@ -527,23 +566,21 @@ dclmdClientBlank(DCLMDComminucation *comm)
 
 /* Wait for a command from the client,
  * if reached, lock the mutex
- * timeout_ms: the timeout from now, in milliseconds
- *             of DCLMD_TIMEOUT_INFINITE: no timeout
+ * wait_until: if not NULL: timeout, otherwise: infinite
  * RETURN 1: got client command, mutex locked
  *        0: got no command, mutex not locked
  *       -1: error
  */
 extern int
-dclmdDaemonGetCommand(DCLMDComminucation *comm, unsigned int timeout_ms, const struct timespec * now)
+dclmdDaemonGetCommand(DCLMDComminucation *comm, const struct timespec *wait_until, const struct timespec *now)
 {
 	struct timespec until;
 	int res;
 
-	if (timeout_ms == DCLMD_TIMEOUT_INFINITE) {
-		res = dclmdSemWait(comm->sem_command);
+	if (wait_until) {
+		res = dclmdSemTimedWait(comm->sem_command, wait_until);
 	} else {
-		dclmdCalcWaitTimeMS(&until, now, timeout_ms);
-		res = dclmdSemTimedWait(comm->sem_command, &until);
+		res = dclmdSemWait(comm->sem_command);
 	}
 
 	if (res < 0) {
@@ -557,7 +594,7 @@ dclmdDaemonGetCommand(DCLMDComminucation *comm, unsigned int timeout_ms, const s
 	while(!dclmdSemTryWait(comm->sem_command));
 
 	/* lock the mutex */
-	dclmdCalcWaitTimeMS(&until, now, timeout_ms);
+	dclmdCalcWaitTimeMS(&until, now, comm->clientTimeout);
 	res = dclmdSemTimedWait(comm->sem_mutex, &until);
 	if (res < 0) {
 		return -1;

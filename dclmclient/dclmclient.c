@@ -56,8 +56,9 @@ int main(int argc, char **argv)
 		if (err == DCLM_OK) {
 			dclmcDebug("preparing command");
 			snprintf(comm->work->text,sizeof(comm->work->text),"Test.");
-			comm->work->pos_x=0;
-			comm->work->cmd = DCLMD_CMD_SHOW_TEXT;
+			comm->work->text_pos_x=0;
+			comm->work->timeout_ms=3000;
+			comm->work->cmd_flags |= DCLMD_CMD_SHOW_TEXT | DCLMD_CMD_TIMEOUT;
 			dclmcDebug("sending command");
 			err = dclmdClientUnlock(comm);
 			if (err != DCLM_OK) {

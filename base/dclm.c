@@ -184,15 +184,16 @@ dclmScrSetBrightness(DCLEDMatrixScreen *scr, int brightness)
 
 	/* convert range 0 ... max_brightness to 
 	 * max_brightness ... 0. like the HW expects it */
-	if (brightness > scr->dclm->max_brightness) {
-		b=0; /* maximum brightness */
-	} else if (brightness < 0) {
+	if (brightness >= scr->dclm->max_brightness) {
+		b=1; /* maximum brightness */
+	} else if (brightness < 1) {
 		b=scr->dclm->max_brightness; /* minimum brightness */
 	} else {
 		b=(uint8_t)(scr->dclm->max_brightness - brightness);
 	}
 
-
+	/* TODO: brightness doesn't work, use value 2*/
+	b = 2;
 	for (i=0; i<DCLM_DATA_ROWS; i++) {
 		scr->data[i][0]=b;
 	}

@@ -21,7 +21,7 @@ extern "C" {
 
 #define DCLM_ROWS 7
 #define DCLM_COLS 21
-#define DCLM_MAX_BRIGHTNESS 2
+#define DCLM_MAX_BRIGHTNESS 255
 
 #define DCLM_DATA_ROWS 4
 #define DCLM_DATA_COLS 8

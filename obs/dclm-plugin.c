@@ -34,7 +34,7 @@ ctx_get_comm(ctx_t *ctx)
 	}
 	ctx->comm = dclmdCommunicationClientCreate();
 	if (ctx->comm) {
-		dclmdClientBlank(ctx->comm);
+		dclmdClientBlank(ctx->comm, 0);
 	}
 	return ctx->comm;
 }
@@ -57,6 +57,8 @@ frontend_event_callback(enum obs_frontend_event ev, void *v_ctx)
 {
 	ctx_t *ctx = (ctx_t*)v_ctx;
 	DCLEDMatrixError err = DCLM_OK;
+	unsigned int timeout_ms;
+
 	if (!ctx) {
 		return;
 	}
@@ -98,8 +100,8 @@ frontend_event_callback(enum obs_frontend_event ev, void *v_ctx)
 			break;
 		case OBS_FRONTEND_EVENT_FINISHED_LOADING:
 			blog(LOG_INFO,"dcledmatrix: event callback initialized");
-			if ( (err=dclmdClientBlank(ctx->comm)) != DCLM_OK) {
-				blog(LOG_WARNING, "dcledmatrix: failed to blank: %d", (int)err);
+			if ( (err=dclmdClientShowText(ctx->comm, "INIT", 0, 0, DCLMD_CMD_CLEAR_SCREEN, 5000)) != DCLM_OK) {
+				blog(LOG_WARNING, "dcledmatrix: failed show init text: %d", (int)err);
 			}
 			return;
 		default:
@@ -111,14 +113,13 @@ frontend_event_callback(enum obs_frontend_event ev, void *v_ctx)
 	}
 
 	if ( (ctx->text[0] == ' ') && (ctx->text[1] == ' ') ) {
-		if ( (err=dclmdClientBlank(ctx->comm)) != DCLM_OK) {
-			blog(LOG_WARNING, "dcledmatrix: failed to blank: %d", (int)err);
-		}
-		return;
+		timeout_ms = 5000;
+	} else {
+		timeout_ms = 0;
 	}	
 
 	ctx->text[3]=ctx->curScene[0];
-	if ( (err=dclmdClientShowText(ctx->comm, ctx->text, 4, 0)) != DCLM_OK) {
+	if ( (err=dclmdClientShowText(ctx->comm, ctx->text, 4, 0, DCLMD_CMD_CLEAR_SCREEN, timeout_ms)) != DCLM_OK) {
 		blog(LOG_WARNING, "dcledmatrix: failed to show text: %d", (int)err);
 	}
 	/*
@@ -215,6 +216,12 @@ void
 obs_module_unload(void)
 {
 	if (module_ctx) {
+		if (module_ctx->comm) {
+			DCLEDMatrixError err;
+			if ( (err=dclmdClientShowText(module_ctx->comm, "FINI", 0, 0, DCLMD_CMD_CLEAR_SCREEN, 5000)) != DCLM_OK) {
+				blog(LOG_WARNING, "dcledmatrix: failed show finish text: %d", (int)err);
+			}
+		}
 		ctx_destroy(module_ctx);
 	}
 	module_ctx = NULL;

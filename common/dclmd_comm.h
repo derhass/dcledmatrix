@@ -6,6 +6,7 @@
 #include <semaphore.h>
 
 #define DCLMD_COMM_MAX_TEXT_LENGTH	255
+#define DCLMD_COMM_VERSION		1
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,28 +16,33 @@ extern "C" {
  * DATA TYPES                                                               *
  ****************************************************************************/ 
 
-/* A single command to the daemon */
-typedef enum {
-	DCLMD_CMD_NONE=0,
-	DCLMD_CMD_SHOW_IMAGE,
-	DCLMD_CMD_SHOW_TEXT,
-	DCLMD_CMD_BLANK,	/* go to blank screen, stop refreshing */
-	DCLMD_CMD_STOP,		/* stop refreshing */
-	DCLMD_CMD_EXIT		/* exit thread */
-} DCLMDCommand;
-
 /* A single unit of work for the daemon.
  * This is a command plus additional data,
  * kept in the shm. 
  * The size of the image must not be changed!
  */
 typedef struct {
+	size_t hdr_size;
+	unsigned int hdr_version;
 	size_t dims[2]; /* dimensions of the led matrix, client should only read this */
-	DCLMDCommand cmd;
+	unsigned int cmd_flags;
 	char text[DCLMD_COMM_MAX_TEXT_LENGTH+1];
-	int pos_x;
-	int pos_y;
+	int img_pos_x;
+	int img_pos_y;
+	int text_pos_x;
+	int brightness;
+	unsigned int timeout_ms;
 } DCLMDWorkEntry;
+
+/* commands to the deamon */
+#define DCLMD_CMD_CLEAR_SCREEN	0x1
+#define DCLMD_CMD_SHOW_IMAGE	0x2
+#define DCLMD_CMD_SHOW_TEXT	0x4
+#define DCLMD_CMD_START_REFRESH	0x8
+#define DCLMD_CMD_STOP_REFRESH	0x10
+#define DCLMD_CMD_BRIGHTNESS	0x20		/* DOESN'T WORK! */
+#define DCLMD_CMD_TIMEOUT	0x40
+#define DCLMD_CMD_EXIT		0x80000000
 
 typedef struct {
 	sem_t *sem_mutex;
@@ -51,6 +57,23 @@ typedef struct {
 } DCLMDComminucation;
 
 #define DCLMD_FLAG_DAEMON	0x1	/* is daemon side */	
+
+/****************************************************************************
+ * TIMING HELPERS                                                           *
+ ****************************************************************************/ 
+
+/* calculate the time in ms milliseconds from now
+ * if now is NULL, get the current time internally */
+extern void
+dclmdCalcWaitTimeMS(struct timespec *ts, const struct timespec *now, unsigned int ms);
+
+/* compare two timespecs
+ * RETURN -1: a before b
+ *         0: a == b
+ *         1: a after b
+ */
+extern int
+dclmdCompareTime(const struct timespec *a, const struct timespec *b);
 
 /****************************************************************************
  * FUNCTIONS FOR THE COMMUNICATION INTERFACE (client and daemon)            *
@@ -102,15 +125,15 @@ dclmdClientUnlock(DCLMDComminucation *comm);
 /* Full cycle: Show text
  * if str is NULL: blank
  * If len is 0: use strlen
+ * timeout_ms: 0 means infinite
  */
 extern DCLEDMatrixError
-dclmdClientShowText(DCLMDComminucation *comm, const char *str, size_t len, int pos_x);
-
+dclmdClientShowText(DCLMDComminucation *comm, const char *str, size_t len, int pos_x,  unsigned int additional_flags, unsigned int timeout_ms);
 
 /* Full cycle: Blank the screen
  */
 extern DCLEDMatrixError
-dclmdClientBlank(DCLMDComminucation *comm);
+dclmdClientBlank(DCLMDComminucation *comm, unsigned int additional_flags);
 
 /****************************************************************************
  * EXTERNAL API: THE COMMUNICATION INTERFACE (daemon side)                  *
@@ -118,14 +141,13 @@ dclmdClientBlank(DCLMDComminucation *comm);
 
 /* Wait for a command from the client,
  * if reached, lock the mutex
- * timeout_ms: the timeout from now, in milliseconds
- *             of DCLMD_TIMEOUT_INFINITE: no timeout
+ * wait_until: if not NULL: timeout, otherwise: infinite
  * RETURN 1: got client command, mutex locked
  *        0: got no command, mutex not locked
  *       -1: error
  */
 extern int
-dclmdDaemonGetCommand(DCLMDComminucation *comm, unsigned int timeout_ms, const struct timespec * now);
+dclmdDaemonGetCommand(DCLMDComminucation *comm, const struct timespec *wait_until, const struct timespec *now);
 
 #define DCLMD_TIMEOUT_INFINITE ((unsigned int)-1)
 

@@ -52,8 +52,14 @@ typedef struct {
 	DCLMDComminucation *comm;
 	unsigned refresh_ms;
 	sig_atomic_t run;
-	int refresh;
+	unsigned int refresh;
+	struct timespec loop_time;
+	struct timespec timeout;
 } DCLMDContext;
+
+#define DC_REFRESH		0x1
+#define DC_REFRESH_ONCE		0x2
+#define DC_REFRESH_UNTIL	0x4
 
 static void
 dctxInit(DCLMDContext *dc)
@@ -134,55 +140,108 @@ static int
 handle_command(DCLMDContext *dc)
 {
 	DCLMDWorkEntry *work = dc->comm->work;
-	switch(work->cmd) {
-		case DCLMD_CMD_SHOW_IMAGE:
-			dclmScrFromImgBlit(dc->scr, &dc->comm->img, work->pos_x, work->pos_y,0,0,dc->comm->img.dims[0], dc->comm->img.dims[1]);
-			dc->refresh=1;
-			break;
-		case DCLMD_CMD_SHOW_TEXT:
-			if (work->text[0]) {
-				work->text[DCLMD_COMM_MAX_TEXT_LENGTH]=0;
-				dclmTextToScr(dc->scr,work->pos_x, work->text, 0, dclmFontBase);
-				dc->refresh=1;
-			} else {
-				dclmBlankScreen(dc->dclm);
-				dc->refresh=0;
-			}
-			break;
-		case DCLMD_CMD_BLANK:
-			dclmBlankScreen(dc->dclm);
-			dc->refresh=0;
-			break;
-		case DCLMD_CMD_STOP:
-			dc->refresh=0;
-			break;
-		case DCLMD_CMD_EXIT:
-			dc->run=0;
-			break;	
-		default:
-			dclmdWarning("unknown command %d, ingored",work->cmd);
+	if (work->cmd_flags == 0) {
+		return 0;
 	}
+
+	if (work->cmd_flags & DCLMD_CMD_BRIGHTNESS) {
+		dclmScrSetBrightness(dc->scr, work->brightness);
+		dc->refresh=DC_REFRESH_ONCE;
+	}
+	if (work->cmd_flags & DCLMD_CMD_CLEAR_SCREEN) {
+		dclmBlankScreen(dc->dclm);
+		dc->refresh=DC_REFRESH_ONCE;
+	}
+	if (work->cmd_flags & DCLMD_CMD_SHOW_IMAGE) {
+		dclmScrFromImgBlit(dc->scr, &dc->comm->img, work->img_pos_x, work->img_pos_y,0,0,dc->comm->img.dims[0], dc->comm->img.dims[1]);
+		dc->refresh=DC_REFRESH | DC_REFRESH_ONCE;
+	}
+	if (work->cmd_flags & DCLMD_CMD_SHOW_TEXT) {
+		if (work->text[0]) {
+			work->text[DCLMD_COMM_MAX_TEXT_LENGTH]=0;
+			dclmTextToScr(dc->scr,work->text_pos_x, work->text, 0, dclmFontBase);
+			dc->refresh=DC_REFRESH | DC_REFRESH_ONCE;
+		}
+	}
+	if (work->cmd_flags & DCLMD_CMD_STOP_REFRESH) {
+		dc->refresh &= ~(DC_REFRESH | DC_REFRESH_UNTIL);
+	}
+	if (work->cmd_flags & DCLMD_CMD_START_REFRESH) {
+		dc->refresh |= DC_REFRESH;
+	}
+	if (work->cmd_flags & DCLMD_CMD_TIMEOUT) {
+		if (work->timeout_ms) {
+			dc->refresh |= DC_REFRESH_UNTIL;
+			dclmdCalcWaitTimeMS(&dc->timeout, NULL, work->timeout_ms);
+		} else {
+			dc->refresh &= DC_REFRESH_UNTIL;
+		}
+	}
+	if (work->cmd_flags & DCLMD_CMD_EXIT) {
+		dc->run=0;
+	}
+
+	work->cmd_flags = 0;
 	return 0;
 }
+
+#if 0
+static double
+dtime(const struct timespec *a, const struct timespec *b)
+{
+	double ta = ((double)a->tv_sec) + a->tv_nsec/1000000000.0;
+	double tb = ((double)b->tv_sec) + b->tv_nsec/1000000000.0;
+	return (tb-ta)*1000.0;
+}
+#endif
 
 static int
 main_loop(DCLMDContext* dc)
 {
-	struct timespec loop_time;
+	struct timespec next_wakeup;
+	struct timespec *wakeup;
+
 	int status = 0;
 	int res;
 
 	dclmdDebug("entering main loop");
 
 	while(dc->run > 0) {
-		if (clock_gettime(CLOCK_REALTIME,&loop_time)) {
+		if (clock_gettime(CLOCK_REALTIME,&dc->loop_time)) {
 			dclmdWarning("failed to get time, giving up");
 			status = 1;
 			break;
 		}
 
 		/* wait for new command or the refresh timeout */
-		res = dclmdDaemonGetCommand(dc->comm, (dc->refresh)?dc->refresh_ms:DCLMD_TIMEOUT_INFINITE, &loop_time);
+		if (dc->refresh) {
+			dclmdCalcWaitTimeMS(&next_wakeup, &dc->loop_time, dc->refresh_ms);
+			wakeup = &next_wakeup;
+			if (dc->refresh & DC_REFRESH_UNTIL) {
+				if (dclmdCompareTime(&next_wakeup, &dc->timeout) > 0) {
+					if (dclmdCompareTime(&dc->loop_time, &dc->timeout) > 0) {
+						dc->refresh &= ~(DC_REFRESH | DC_REFRESH_UNTIL);
+						dclmdDebug("timeout reached");
+					} else {
+						dclmdDebug("waiting until timeout");
+						wakeup = &dc->timeout;
+					}
+				}
+			}
+		} else {
+			wakeup = NULL;
+		}
+
+#if 0
+		if (wakeup) {
+			dclmdDebug("wakeup: until: %f, next: %f, timeout:%f",
+				dtime(&dc->loop_time, wakeup),
+				dtime(&dc->loop_time, &next_wakeup),
+				dtime(&dc->loop_time, &dc->timeout));
+				
+		}
+#endif
+		res = dclmdDaemonGetCommand(dc->comm, wakeup, &dc->loop_time);
 		dclmdDebug("wakeup from loop: %d",res);
 		if (dc->run < 1) {
 			break;
@@ -204,6 +263,7 @@ main_loop(DCLMDContext* dc)
 		}
 		if (dc->refresh) {
 			dclmSendScreen(dc->scr);
+			dc->refresh &= ~DC_REFRESH_ONCE;
 		}
 	}
 
