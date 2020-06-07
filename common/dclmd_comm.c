@@ -77,7 +77,7 @@ dclmdCompareTime(const struct timespec *a, const struct timespec *b)
 }
 
 /****************************************************************************
- * INTERNAL: SEMAPHORE HELPERS                                              *
+ * SEMAPHORE HELPERS                                                        *
  ****************************************************************************/
 
 static sem_t *
@@ -130,7 +130,7 @@ dclmdSemWait(sem_t *sem)
 	return -1;
 }
 
-static int
+extern int
 dclmdSemTryWait(sem_t *sem)
 {
 	do {
@@ -172,7 +172,7 @@ dclmdSemTimedWait(sem_t *sem, const struct timespec *ts)
 	return -1;
 }
 
-static int
+extern int
 dclmdSemTimedWaitMS(sem_t *sem, unsigned int ms)
 {
 	struct timespec ts;
@@ -180,7 +180,6 @@ dclmdSemTimedWaitMS(sem_t *sem, unsigned int ms)
 
 	return dclmdSemTimedWait(sem, &ts);
 }
-
 
 /****************************************************************************
  * INTERNAL: THE COMMUNICATION INTERFACE                                    *

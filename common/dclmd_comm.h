@@ -76,6 +76,16 @@ extern int
 dclmdCompareTime(const struct timespec *a, const struct timespec *b);
 
 /****************************************************************************
+ * SEMAPHORE HELPERS                                                        *
+ ****************************************************************************/
+
+extern int
+dclmdSemTryWait(sem_t *sem);
+
+extern int
+dclmdSemTimedWaitMS(sem_t *sem, unsigned int ms);
+
+/****************************************************************************
  * FUNCTIONS FOR THE COMMUNICATION INTERFACE (client and daemon)            *
  ****************************************************************************/ 
 

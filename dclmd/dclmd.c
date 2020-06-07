@@ -7,8 +7,14 @@
 #include <string.h>
 #include <signal.h>
 #include <time.h>
+#include <fcntl.h>
+#include <semaphore.h>
+#include <unistd.h>
+
 
 #define DCLMD_DEFAULT_REFRESH_MS 300 /* maximum time between LED matrix refresh */
+
+#define DCLMD_SEM "/dlcmd-daemon"
 
 /****************************************************************************
  * ERRORS and DIAGNOSTICS                                                   *
@@ -287,25 +293,152 @@ static void sigterm_handler(int s)
 	sem_post(dclmdCtx.comm->sem_command);
 }
 
-int main(int argc, char **argv)
+static int 
+main_run (const char *options, sem_t *sem)
 {
-	const char *options=NULL;
+	DCLEDMatrixError err;
 	int status = 1000;
-	
-	signal(SIGTERM, SIG_IGN); /* temporarily ignore it unti the main loop starts */
-	signal(SIGINT,  SIG_IGN); /* temporarily ignore it unti the main loop starts */
-	dctxInit(&dclmdCtx);
 
-	/* TODO MH: parse arguments */
+	if (sem) {
+		while (!dclmdSemTryWait(sem));
+	}
 
-	if (dctxOpen(&dclmdCtx, options) == DCLM_OK) {
+	err =  dctxOpen(&dclmdCtx, options);
+	if (sem) {
+		dclmdDebug("informing parent about daemon progress");
+		sem_post(sem);
+	}
+
+	if (err == DCLM_OK) {
 		signal(SIGTERM, sigterm_handler); /* handle termination in a way to gracefully exit */
 		signal(SIGINT,  sigterm_handler); /* handle termination in a way to gracefully exit */
 		status = main_loop(&dclmdCtx);
 		signal(SIGTERM, SIG_IGN); /* ignore it, we want to terminate safely */
 		signal(SIGINT,  SIG_IGN); /* ignore it, we want to terminate safely */
 	}
+
+	if (sem) {
+		sem_unlink(DCLMD_SEM);
+		sem_close(sem);
+	}
 	dctxCleanup(&dclmdCtx);
+	return status;
+}
+
+static int 
+daemon_run(const char *options)
+{
+	pid_t pid;
+	sem_t *sem;
+	int res;
+
+	dclmdDebug("checking if daemon is already running");
+	sem = sem_open(DCLMD_SEM, O_RDWR);
+	if (sem) {
+		res = dclmdSemTimedWaitMS(sem, 3000);
+		if (res) {
+			dclmdWarning("daemon semaphore %s seems stuck, recreating", DCLMD_SEM);
+			sem_unlink(DCLMD_SEM);
+			sem_close(sem);
+		} else {
+			sem_post(sem);
+			sem_close(sem);
+			dclmdDebug("daemon already running");
+			return 0;
+		}
+	}
+
+	sem = sem_open(DCLMD_SEM, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH, 0);
+	if (!sem) {
+		dclmdWarning("existing daemon seems stuck, you have to kill it manually!");
+		return 1001;
+	}
+	dclmdDebug("becoming daemon");
+
+	/* count it to zero to be sure */
+	while (!dclmdSemTryWait(sem));
+
+	pid = fork();
+	if (pid < 0) {
+		dclmdWarning("failed to daemonize (1st fork!)");
+		return 999;
+	} else if (pid > 0) {
+		/* wait for daemon to start*/
+		dclmdDebug("waiting for daemon to initialize");
+		res = dclmdSemTimedWaitMS(sem, 3000);
+		if (res) {
+			dclmdWarning("daemon did not react in time", DCLMD_SEM);
+		} else {
+			sem_post(sem);
+		}
+		sem_close(sem);
+		return 0;
+	}
+
+	/* we are the child: create new progress group */
+	if (setsid() < 0) {
+		dclmdWarning("setsid() failed but going on...");
+	}
+	pid=fork();
+	if (pid < 0) {
+		dclmdWarning("failed to daemonize (2nd fork!)");
+		return 998;
+	} else if (pid>0) {
+		sem_close(sem);
+		return 0;
+	}
+
+	/* now we are a new child of init, detached from any tty */
+	dclmdDebug("running as daemon");
+	return main_run(options,sem);
+}
+
+int main(int argc, char **argv)
+{
+	const char *options=NULL;
+	int no_daemon = 0;
+	int kill_daemon = 0;
+	int i;
+	int status = 0;
+	
+	dctxInit(&dclmdCtx);
+	signal(SIGTERM, SIG_IGN); /* temporarily ignore it unti the main loop starts */
+	signal(SIGINT,  SIG_IGN); /* temporarily ignore it unti the main loop starts */
+
+	for (i=1; i<argc; i++) {
+		if (!strcmp(argv[i],"-n") || !strcmp(argv[i], "--no-daemon") ) {
+			no_daemon = 1;
+			continue;
+		}
+		if (!strcmp(argv[i],"-k") || !strcmp(argv[i], "--kill-daemon") ) {
+			kill_daemon = 1;
+			continue;
+		}
+	}
+
+	if (kill_daemon) {
+		DCLMDComminucation *comm;
+		dclmdDebug("attempting to kill daemon");
+		comm = dclmdCommunicationClientCreate();
+		if (comm) {
+			if (dclmdClientShowText(comm, "KILL", 0, 0, DCLMD_CMD_CLEAR_SCREEN | DCLMD_CMD_SHOW_TEXT | DCLMD_CMD_EXIT, 0) != DCLM_OK) {
+				dclmdWarning("daemon could not be reuested to kill");
+				status = 2;
+			}
+		} else {
+			dclmdWarning("daemon does not seem to be running");
+			status = 1;
+		}
+		dclmdCommunicationDestroy(comm);
+		return status;
+	}
+
+	if (no_daemon) {
+		status = main_run(options, NULL);
+	} else {
+		status = daemon_run(options);
+	}
+
 	return status;
 }
 
