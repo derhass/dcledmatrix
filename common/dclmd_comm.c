@@ -345,8 +345,8 @@ dclmdCommOpen(DCLMDComminucation *comm, int as_daemon, int dims_x, int dims_y)
 }
 
 /****************************************************************************
- * EXTERNAL API: THE COMMUNICATION INTERFACE                                *
- ****************************************************************************/ 
+ * EXTERNAL API: THE COMMUNICATION INTERFACE (client and daemon)            *
+ ****************************************************************************/
 
 /* Create the communication interface.
  * If as_daemon is true: create the daemon side,
@@ -412,6 +412,20 @@ dclmdCommunicationDestroy(DCLMDComminucation *comm)
 	}
 
 	free(comm);
+}
+
+/****************************************************************************
+ * EXTERNAL API: THE COMMUNICATION INTERFACE (client side)                  *
+ ****************************************************************************/
+
+/* Create the communication interface as client.
+ * RETURN: pointer to newly alloced structure,
+ *         NULL on error
+ */ 
+extern DCLMDComminucation *
+dclmdCommunicationClientCreate(void)
+{
+	return dclmdCommunicationCreate(0,0,0);
 }
 
 /* Lock the communication interface as client.
@@ -492,6 +506,10 @@ dclmdClientShowText(DCLMDComminucation *comm, const char *str, size_t len, int p
 	}
 	return err;
 }
+
+/****************************************************************************
+ * EXTERNAL API: THE COMMUNICATION INTERFACE (daemon side)                  *
+ ****************************************************************************/
 
 /* Wait for a command from the client,
  * if reached, lock the mutex

@@ -49,7 +49,7 @@ int main(int argc, char **argv)
 	/* TODO MH: parse arguments */
 
 	dclmcDebug("connecting to daemon SHM");
-	comm = dclmdCommunicationCreate(0, 0, 0);
+	comm = dclmdCommunicationClientCreate();
 	if (comm) {
 		dclmcDebug("locking SHM");
 		err = dclmdClientLock(comm);

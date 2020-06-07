@@ -53,7 +53,7 @@ typedef struct {
 #define DCLMD_FLAG_DAEMON	0x1	/* is daemon side */	
 
 /****************************************************************************
- * FUNCTIONS FOR THE COMMUNICATION INTERFACE                                *
+ * FUNCTIONS FOR THE COMMUNICATION INTERFACE (client and daemon)            *
  ****************************************************************************/ 
 
 /* Create the communication interface.
@@ -69,6 +69,17 @@ dclmdCommunicationCreate(int deamon, int dims_x, int dims_y);
 /* Destroy the communication interface */
 extern void
 dclmdCommunicationDestroy(DCLMDComminucation *comm);
+
+/****************************************************************************
+ * EXTERNAL API: THE COMMUNICATION INTERFACE (client side)                  *
+ ****************************************************************************/
+
+/* Create the communication interface as client.
+ * RETURN: pointer to newly alloced structure,
+ *         NULL on error
+ */ 
+extern DCLMDComminucation *
+dclmdCommunicationClientCreate(void);
 
 /* Lock the communication interface as client.
  * If this returns successfully, you can write
@@ -94,6 +105,10 @@ dclmdClientUnlock(DCLMDComminucation *comm);
  */
 extern DCLEDMatrixError
 dclmdClientShowText(DCLMDComminucation *comm, const char *str, size_t len, int pos_x);
+
+/****************************************************************************
+ * EXTERNAL API: THE COMMUNICATION INTERFACE (daemon side)                  *
+ ****************************************************************************/
 
 /* Wait for a command from the client,
  * if reached, lock the mutex
