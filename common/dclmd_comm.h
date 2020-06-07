@@ -106,6 +106,12 @@ dclmdClientUnlock(DCLMDComminucation *comm);
 extern DCLEDMatrixError
 dclmdClientShowText(DCLMDComminucation *comm, const char *str, size_t len, int pos_x);
 
+
+/* Full cycle: Blank the screen
+ */
+extern DCLEDMatrixError
+dclmdClientBlank(DCLMDComminucation *comm);
+
 /****************************************************************************
  * EXTERNAL API: THE COMMUNICATION INTERFACE (daemon side)                  *
  ****************************************************************************/

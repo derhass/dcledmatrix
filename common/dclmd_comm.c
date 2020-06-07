@@ -53,7 +53,6 @@ dclmdCalcWaitTimeMS(struct timespec *ts, const struct timespec *now, unsigned in
 	}
 }
 
-
 /****************************************************************************
  * INTERNAL: SEMAPHORE HELPERS                                              *
  ****************************************************************************/
@@ -502,6 +501,21 @@ dclmdClientShowText(DCLMDComminucation *comm, const char *str, size_t len, int p
 		}
 		work->cmd = DCLMD_CMD_SHOW_TEXT;
 		work->pos_x = pos_x;
+		err = dclmdClientUnlock(comm);
+	}
+	return err;
+}
+
+/* Full cycle: Blank the screen
+ */
+extern DCLEDMatrixError
+dclmdClientBlank(DCLMDComminucation *comm)
+{
+	DCLEDMatrixError err;
+	if ( (err = dclmdClientLock(comm) ) == DCLM_OK ) {
+		DCLMDWorkEntry *work = comm->work;
+		/* note: it is OK if work->text is not 0-terminated, dclmd takes care */
+		work->cmd = DCLMD_CMD_BLANK;
 		err = dclmdClientUnlock(comm);
 	}
 	return err;
