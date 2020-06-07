@@ -15,11 +15,12 @@ CFLAGS_SHARED = -fPIC -Bsymbolic
 CFLAGS_DEBUG = -g -Werror
 
 # flags for RELEASE builds
-CFLAGS_RELEASE = -flto -ffast-math -s -O5 -DNDEBU
+CFLAGS_RELEASE = -flto -ffast-math -s -O5 -DNDEBUG
 
 # directories
 BINPATH=${TOP}/bin
 LIBPATH=${TOP}/lib
+OBSPLUGINPATH=${TOP}/lib/obs-plugins
 BUILDPATH=${TOP}/built
 
 # unix tools to use

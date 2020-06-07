@@ -6,6 +6,11 @@ CFLAGS += $(CFLAGS_SHARED)
 DEPEND=1
 endif
 
+ifeq ($(OBSPLUGIN),1)
+CFLAGS += $(CFLAGS_SHARED)
+DEPEND=1
+endif
+
 ifeq ($(BINARY),1)
 CFLAGS += $(CFLAGS_BINARY)
 DEPEND=1
@@ -23,7 +28,11 @@ default: all
 ifeq ($(LIBRARY),1)
 BUILDDIR=${BUILDPATH}/lib/${MODULE}
 else
+ifeq ($(OBSPLUGIN),1)
+BUILDDIR=${BUILDPATH}/lib/obs-plugins/${MODULE}
+else
 BUILDDIR=${BUILDPATH}/${MODULE}
+endif
 endif
 BUILDOBJECTS=$(addprefix $(BUILDDIR)/,$(SRCFILES))
 
@@ -31,6 +40,7 @@ CPPFLAGS += $(INCLUDEFLAGS)
 
 # create the build directory. any intermediate files will be stored there
 ${BUILDDIR}:
+	@echo creating internal build dir: ${BUILDDIR}
 	@$(MKDIR) -p ${BUILDDIR} ${BUILDDIR}/../base ${BUILDDIR}/../common
 
 # automatic dependency generation
@@ -70,9 +80,11 @@ $(BUILDDIR)/%.o: %.c
 # LIBRARIES 
 ifeq ($(LIBRARY),1)
 ${LIBPATH}:
+	@echo creating library dir: ${LIBPATH}
 	@mkdir -p ${LIBPATH}
 
 $(LIBPATH)/$(NAME): $(OBJECTS) $(LIBPATH)
+	@echo creating library $(LIBPATH)/$(NAME)
 	$(CC) $(CFLAGS) $(LINK) $(OBJECTS) -shared -Wl,-soname,lib$(APPNAME).so.$(APPVERSION_MAJOR) -o$(LIBPATH)/$(NAME)
 
 $(LIBPATH)/lib$(APPNAME).so: $(LIBPATH)/lib$(APPNAME).so.$(APPVERSION_MAJOR)
@@ -84,13 +96,30 @@ $(LIBPATH)/lib$(APPNAME).so.$(APPVERSION_MAJOR): $(LIBPATH)/$(NAME)
 ALLDEPS += $(LIBPATH)/$(NAME)  $(LIBPATH)/lib$(APPNAME).so
 BUILDFILES += $(LIBPATH)/$(NAME) $(LIBPATH)/lib$(APPNAME).so $(LIBPATH)/lib$(APPNAME).so.$(APPVERSION_MAJOR)
 endif
+
+# OBS PLUGINS
+ifeq ($(OBSPLUGIN),1)
+${OBSPLUGINPATH}:
+	@echo creating obs plugin dir: ${obspluginpath}
+	@mkdir -p ${OBSPLUGINPATH}
+
+$(OBSPLUGINPATH)/$(NAME): $(OBJECTS) $(OBSPLUGINPATH)
+	@echo creating OBS plugin: $(OBSPLUGINPATH)/$(NAME)
+	$(CC) $(CFLAGS) $(LINK) $(OBJECTS) -shared -o$(OBSPLUGINPATH)/$(NAME)
+
+ALLDEPS += $(OBSPLUGINPATH)/$(NAME)
+BUILDFILES += $(OBSPLUGINPATH)/$(NAME)
+endif
+ 
  
 # BINARIES 
 ifeq ($(BINARY),1)
 ${BINPATH}:
+	@echo creating biary dir: ${BINPATH}
 	@mkdir -p ${BINPATH}
 
 $(BINPATH)/$(NAME): $(OBJECTS) $(BINPATH)
+	@echo creating binary $(BINPATH)/$(NAME)
 	$(CC) $(CFLAGS) $(OBJECTS) $(LINK) -o$(BINPATH)/$(NAME)
 
 ALLDEPS += $(BINPATH)/$(NAME)
