@@ -495,7 +495,7 @@ dclmdClientShowText(DCLMDComminucation *comm, const char *str, size_t len, int p
 				len = sizeof(work->text) - 1;
 			}
 			memcpy(work->text, str, len);
-			work->text[len+1]=0;
+			work->text[len]=0;
 		} else {
 			strncpy(work->text, str, sizeof(work->text));
 		}
