@@ -30,6 +30,7 @@ dclmdWarning(const char *template, ...)
 	vfprintf(stderr, template, args);
 	va_end(args);
 	fputc('\n',stderr);
+	fflush(stderr);
 }
 
 #ifdef NDEBUG
@@ -45,6 +46,7 @@ dclmdDebug(const char *template, ...)
 	vfprintf(stderr, template, args);
 	va_end(args);
 	fputc('\n',stderr);
+	fflush(stderr);
 }
 #endif
 
