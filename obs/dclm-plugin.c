@@ -114,14 +114,9 @@ frontend_event_callback(enum obs_frontend_event ev, void *v_ctx)
 			ctx->text[1]='+';
 			break;
 		case OBS_FRONTEND_EVENT_SCENE_CHANGED:
+		case OBS_FRONTEND_EVENT_FINISHED_LOADING:
 			get_current_scene(ctx);
 			break;
-		case OBS_FRONTEND_EVENT_FINISHED_LOADING:
-			blog(LOG_INFO,"dcledmatrix: event callback initialized");
-			if ( (err=dclmdClientShowText(ctx->comm, "INIT", 0, 0, DCLMD_CMD_CLEAR_SCREEN, 5000)) != DCLM_OK) {
-				blog(LOG_WARNING, "dcledmatrix: failed show init text: %d", (int)err);
-			}
-			return;
 		default:
 			/* event not relevant for us */
 			return;
