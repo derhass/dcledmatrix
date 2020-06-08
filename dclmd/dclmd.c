@@ -182,7 +182,7 @@ handle_command(DCLMDContext *dc)
 			dc->refresh |= DC_REFRESH_UNTIL;
 			dclmdCalcWaitTimeMS(&dc->timeout, NULL, work->timeout_ms);
 		} else {
-			dc->refresh &= DC_REFRESH_UNTIL;
+			dc->refresh &= ~DC_REFRESH_UNTIL;
 		}
 	}
 	if (work->cmd_flags & DCLMD_CMD_EXIT) {
