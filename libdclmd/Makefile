@@ -22,7 +22,9 @@ MODULE=lib$(APPNAME)
 LIBRARY=1
 
 # source and header files
-SRCFILES=${TOP}/common/dclmd_comm
+SRCFILES=${TOP}/common/dclm_font \
+	 ${TOP}/common/dclm_image \
+         ${TOP}/common/dclmd_comm
 
 # use the build rules from the main makefiles
 include ${TOP}/dclm.mk
