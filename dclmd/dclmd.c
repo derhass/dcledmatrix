@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2011 - 2020 by derhass <derhass@arcor.de>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "dclm.h"
 #include "dclm_font.h"
 #include "dclmd_comm.h"
@@ -395,7 +411,46 @@ daemon_run(const char *options)
 	return main_run(options,sem);
 }
 
-int main(int argc, char **argv)
+static void
+print_help(void)
+{
+	printf("usage: dclmd [options]\n\n");
+	printf("available options:\n");
+	printf(" -n, --no-daemon     do not run as daemon in the background\n");
+	printf(" -k, --kill-daemon   stop a running daemon\n");
+	printf(" -V, --version       print version and exit\n");
+	printf(" -h, --help          print this help and exit\n");
+	printf("\n");
+	printf("by default, dclmd will check if the daemon is already running, and start the\n");
+	printf("daemon on demand.\n");
+	printf("\n");
+}
+
+static void 
+print_info(void)
+{
+	printf("dclmd -- Version 0.1\n\n");
+	printf("Copyright (C) 2011 - 2020 by derhass <derhass@arcor.de>\n\n");
+	printf("This program is free software: you can redistribute it and/or modify\n");
+	printf("it under the terms of the GNU General Public License as published by\n");
+	printf("the Free Software Foundation, either version 2 of the License, or\n");
+	printf("(at your option) any later version.\n\n");
+	printf("This program is distributed in the hope that it will be useful,\n");
+	printf("but WITHOUT ANY WARRANTY; without even the implied warranty of\n");
+	printf("MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the\n");
+	printf("GNU General Public License for more details.\n");
+	printf("You should have received a copy of the GNU General Public License\n");
+	printf("along with this program.  If not, see <http://www.gnu.org/licenses/>.\n");
+
+	printf("Font data based on the font from \"dcled\",\n");
+	printf("Copyright 2009,2010,2011 Jeff Jahr <malakais@pacbell.net>,\n");
+	printf("under GPL license.  It is basically the X11 5x7 font with the \"g\" \n");
+	printf("glyph replaced by a variant from Andy Scheller.\n");
+	printf("\n");
+}
+
+int
+main(int argc, char **argv)
 {
 	const char *options=NULL;
 	int no_daemon = 0;
@@ -415,6 +470,14 @@ int main(int argc, char **argv)
 		if (!strcmp(argv[i],"-k") || !strcmp(argv[i], "--kill-daemon") ) {
 			kill_daemon = 1;
 			continue;
+		}
+		if (!strcmp(argv[i],"-V") || !strcmp(argv[i], "--version") ) {
+			print_info();
+			return status;
+		}
+		if (!strcmp(argv[i],"-h") || !strcmp(argv[i], "--help") ) {
+			print_help();
+			return status;
 		}
 	}
 
